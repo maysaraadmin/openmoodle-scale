@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "openmoodle.fullname" . }}-config
+data:
+  config.php: |
+    <?php
+    unset($CFG);
+    global $CFG;
+    $CFG = new stdClass();
+    $CFG->dbtype = 'mariadb';
+    $CFG->dblibrary = 'native';
+    $CFG->dbhost = '{{ .Values.database.host }}';
+    $CFG->dbname = '{{ .Values.database.name }}';
+    $CFG->dbuser = '{{ .Values.database.user }}';
+    $CFG->dbpass = getenv('DB_PASSWORD');
+    $CFG->prefix = 'mdl_';
+    $CFG->wwwroot = 'https://{{ (index .Values.ingress.hosts 0).host }}';
+    $CFG->dataroot = '/var/moodledata';
+    $CFG->session_handler_class = '\\core\\session\\redis';
+    $CFG->session_redis_host = 'redis-cluster';
+    $CFG->session_redis_port = 6379;
+    $CFG->sslproxy = true;
+    $CFG->reverseproxy = true;
+    $CFG->debug = 0;
+    $CFG->debugdisplay = 0;
+    require_once(__DIR__ . '/lib/setup.php');

@@ -1,0 +1,8 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "openmoodle.fullname" . }}
+spec:
+  minAvailable: {{ max 1 (sub .Values.moodle.replicaCount 1) }}
+  selector:
+    matchLabels: { app.kubernetes.io/name: {{ include "openmoodle.name" . }} }

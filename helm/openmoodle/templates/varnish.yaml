@@ -1,0 +1,40 @@
+{{- if .Values.varnish.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "openmoodle.fullname" . }}-varnish
+spec:
+  replicas: {{ .Values.varnish.replicaCount }}
+  selector: { matchLabels: { app: {{ include "openmoodle.fullname" . }}-varnish } }
+  template:
+    metadata: { labels: { app: {{ include "openmoodle.fullname" . }}-varnish } }
+    spec:
+      containers:
+        - name: varnish
+          image: varnish:7.4-alpine
+          ports: [{ name: http, containerPort: 80 }]
+          command: [varnishd, -F, -f, /etc/varnish/default.vcl, -s, malloc,{{ .Values.varnish.cacheSize }}]
+          volumeMounts: [{ name: vcl, mountPath: /etc/varnish }]
+      volumes: [{ name: vcl, configMap: { name: {{ include "openmoodle.fullname" . }}-varnish } }]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "openmoodle.fullname" . }}-varnish
+data:
+  default.vcl: |
+    vcl 4.1;
+    backend default { .host = "{{ include "openmoodle.fullname" . }}"; .port = "80"; }
+    sub vcl_recv {
+      if (req.http.Cookie ~ "MoodleSession") { return (pass); }
+      if (req.url ~ "\.(css|js|png|jpg|jpeg|gif|svg|woff2)$") { unset req.http.Cookie; }
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "openmoodle.fullname" . }}-varnish
+spec:
+  selector: { app: {{ include "openmoodle.fullname" . }}-varnish }
+  ports: [{ port: 80, targetPort: http }]
+{{- end }}

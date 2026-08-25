@@ -1,0 +1,13 @@
+groups:
+  - name: moodle
+    rules:
+      - alert: MoodleHighErrorRate
+        expr: sum(rate(nginx_http_requests_total{status=~"5.."}[5m])) / sum(rate(nginx_http_requests_total[5m])) > 0.05
+        for: 5m
+        labels: { severity: critical }
+        annotations: { summary: Moodle error rate is above 5% }
+      - alert: MoodlePodsCrashLooping
+        expr: rate(kube_pod_container_status_restarts_total{container="moodle-app"}[15m]) > 0
+        for: 5m
+        labels: { severity: critical }
+        annotations: { summary: Moodle pods are restarting }

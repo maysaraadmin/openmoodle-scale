@@ -1,0 +1,28 @@
+pipeline {
+  agent { label 'docker-build' }
+  environment {
+    REGISTRY = 'registry.openmoodle.local'
+    IMAGE_MOODLE = "${REGISTRY}/openmoodle/moodle-app"
+    IMAGE_NGINX = "${REGISTRY}/openmoodle/moodle-nginx"
+  }
+  stages {
+    stage('Build') {
+      steps {
+        script { env.IMAGE_TAG = env.GIT_COMMIT.take(8) }
+        sh 'docker build -t ${IMAGE_MOODLE}:${IMAGE_TAG} -f docker/moodle/Dockerfile docker/moodle'
+        sh 'docker build -t ${IMAGE_NGINX}:${IMAGE_TAG} -f docker/nginx/Dockerfile docker/nginx'
+      }
+    }
+    stage('Validate') {
+      steps {
+        sh 'helm lint helm/openmoodle'
+        sh 'docker run --rm ${IMAGE_MOODLE}:${IMAGE_TAG} php -m'
+      }
+    }
+    stage('Deploy') {
+      when { branch 'main' }
+      steps { sh 'helm upgrade --install openmoodle-prod helm/openmoodle --namespace moodle-prod --create-namespace --set moodle.image.tag=${IMAGE_TAG} --wait' }
+    }
+  }
+  post { always { sh 'docker system prune -f || true' } }
+}

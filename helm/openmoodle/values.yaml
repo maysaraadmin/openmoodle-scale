@@ -1,0 +1,34 @@
+global:
+  storageClass: longhorn
+  imageRegistry: registry.openmoodle.local
+moodle:
+  replicaCount: 3
+  image: { repository: openmoodle/moodle-app, tag: latest, pullPolicy: IfNotPresent }
+  nginx: { repository: openmoodle/moodle-nginx, tag: latest }
+  resources:
+    requests: { cpu: 500m, memory: 1Gi }
+    limits: { cpu: 2000m, memory: 4Gi }
+hpa:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 70
+database: { host: mariadb-primary, name: moodle, user: moodle }
+secrets:
+  databasePassword: change-me
+  adminPassword: change-me
+  minioAccessKey: change-me
+  minioSecretKey: change-me
+redis: { enabled: true }
+mariadb: { enabled: true }
+minio: { enabled: true }
+moodledata: { size: 100Gi, accessMode: ReadWriteMany }
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: moodle.openmoodle.local
+      paths: [{ path: /, pathType: Prefix }]
+  tls: []
+cron: { enabled: true, schedule: "*/5 * * * *" }
+varnish: { enabled: false, replicaCount: 2, cacheSize: 2G }

@@ -1,0 +1,29 @@
+{{- if .Values.cron.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "openmoodle.fullname" . }}-cron
+spec:
+  schedule: {{ .Values.cron.schedule | quote }}
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: moodle-cron
+              image: "{{ .Values.global.imageRegistry }}/{{ .Values.moodle.image.repository }}:{{ .Values.moodle.image.tag }}"
+              command: [php, /var/www/html/admin/cli/cron.php]
+              env:
+                - { name: DB_HOST, value: {{ .Values.database.host | quote }} }
+                - { name: DB_NAME, value: {{ .Values.database.name | quote }} }
+                - { name: DB_USER, value: {{ .Values.database.user | quote }} }
+                - name: DB_PASSWORD
+                  valueFrom: { secretKeyRef: { name: {{ include "openmoodle.fullname" . }}-secrets, key: database-password } }
+              volumeMounts:
+                - { name: config, mountPath: /var/www/html/config.php, subPath: config.php }
+          volumes:
+            - name: config
+              configMap: { name: {{ include "openmoodle.fullname" . }}-config }
+{{- end }}

@@ -1,0 +1,32 @@
+---
+- name: Prepare OpenMoodleScale Kubernetes nodes
+  hosts: all
+  become: true
+  vars:
+    sysctl_params:
+      net.bridge.bridge-nf-call-iptables: 1
+      net.bridge.bridge-nf-call-ip6tables: 1
+      net.ipv4.ip_forward: 1
+      vm.overcommit_memory: 1
+      vm.swappiness: 10
+  tasks:
+    - name: Install node packages
+      ansible.builtin.apt:
+        name: [ca-certificates, curl, gnupg, jq, nfs-common, containerd]
+        state: present
+        update_cache: true
+    - name: Disable swap
+      ansible.builtin.command: swapoff -a
+      changed_when: false
+    - name: Apply kernel parameters
+      ansible.posix.sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: true
+      loop: "{{ sysctl_params | dict2items }}"
+    - name: Enable containerd
+      ansible.builtin.service:
+        name: containerd
+        state: started
+        enabled: true
