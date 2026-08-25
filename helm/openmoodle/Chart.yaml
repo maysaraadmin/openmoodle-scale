@@ -15,7 +15,7 @@ sources:
   - https://github.com/moodle/moodle
 dependencies:
   - name: redis-cluster
-    version: 9.0.0
+    version: 13.0.4
     repository: https://charts.bitnami.com/bitnami
     condition: redis.enabled
   - name: mariadb
