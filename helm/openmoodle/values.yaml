@@ -122,5 +122,16 @@ networkPolicy:
   ingressNamespaceSelector:
     kubernetes.io/metadata.name: ingress-nginx
 
+backup:
+  enabled: false
+  schedule: "0 2 * * *"
+  minio:
+    enabled: false
+    endpoint: minio.minio.svc.cluster.local:9000
+    bucket: backups
+  retention:
+    enabled: true
+    days: 30
+
 podManagement:
   terminationGracePeriodSeconds: 60

@@ -1,0 +1,61 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include \"openmoodle.fullname\" . }}-test-{{ randAlphaNum 5 }}"
+  labels:
+    {{- include "openmoodle.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+spec:
+  restartPolicy: Never
+  securityContext:
+    seccompProfile: { type: RuntimeDefault }
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+  containers:
+    - name: test
+      image: curlimages/curl:8.5.0
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities: { drop: [ALL] }
+        readOnlyRootFilesystem: true
+      command:
+        - /bin/sh
+        - -c
+        - |
+          echo "Running Helm chart tests..."
+          SERVICE_NAME="{{ include \"openmoodle.fullname\" . }}"
+          NAMESPACE="{{ .Release.Namespace }}"
+
+          echo "Checking for deployment..."
+          kubectl get deployment -n "$NAMESPACE" "$SERVICE_NAME" || { echo "FAIL: Deployment not found"; exit 1; }
+
+          echo "Checking for service..."
+          kubectl get service -n "$NAMESPACE" "$SERVICE_NAME" || { echo "FAIL: Service not found"; exit 1; }
+
+          echo "Checking for HPA..."
+          kubectl get hpa -n "$NAMESPACE" "$SERVICE_NAME" || { echo "FAIL: HPA not found"; exit 1; }
+
+          echo "Checking for PVC..."
+          kubectl get pvc -n "$NAMESPACE" "$SERVICE_NAME-moodledata" || { echo "FAIL: PVC not found"; exit 1; }
+
+          echo "Checking for ingress..."
+          kubectl get ingress -n "$NAMESPACE" "$SERVICE_NAME" || { echo "FAIL: Ingress not found"; exit 1; }
+
+          echo "Checking for CronJob..."
+          kubectl get cronjob -n "$NAMESPACE" "$SERVICE_NAME-cron" || { echo "FAIL: CronJob not found"; exit 1; }
+
+          echo "Checking for NetworkPolicy..."
+          kubectl get networkpolicy -n "$NAMESPACE" "$SERVICE_NAME" || { echo "FAIL: NetworkPolicy not found"; exit 1; }
+
+          echo "Checking for PodDisruptionBudget..."
+          kubectl get pdb -n "$NAMESPACE" "$SERVICE_NAME" || { echo "FAIL: PodDisruptionBudget not found"; exit 1; }
+
+          echo "Checking pod security context..."
+          kubectl get pod -n "$NAMESPACE" -l app.kubernetes.io/name={{ include "openmoodle.name" . }} -o jsonpath='{.items[*].spec.containers[*].securityContext}' | grep -q "readOnlyRootFilesystem" || { echo "FAIL: readOnlyRootFilesystem not set"; exit 1; }
+
+          echo "Checking init job exists or completed..."
+          kubectl get job -n "$NAMESPACE" -l app.kubernetes.io/name={{ include "openmoodle.name" . }} || echo "Note: No init job found (may have already completed)"
+
+          echo "All tests passed!"

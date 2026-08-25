@@ -5,7 +5,7 @@ HELM_CHART := helm/openmoodle
 HELM_NS ?= moodle-prod
 HELM_RELEASE ?= openmoodle-prod
 
-.PHONY: help infra k8s deploy staging deploy-prod clean plan apply destroy
+.PHONY: help infra k8s deploy staging deploy-prod clean plan apply destroy test backup
 
 help:
 	@echo "OpenMoodleScale Deployment"
@@ -16,6 +16,9 @@ help:
 	@echo "  make k8s           - Bootstrap Kubernetes with Ansible"
 	@echo "  make deploy-staging - Deploy to staging"
 	@echo "  make deploy-prod   - Deploy to production"
+	@echo "  make test          - Run Helm chart tests"
+	@echo "  make backup        - Run manual backup job"
+	@echo "  make lint          - Lint Helm charts and templates"
 	@echo "  make destroy       - Destroy infrastructure"
 	@echo "  make clean         - Remove rendered files and .terraform"
 
@@ -57,6 +60,12 @@ deploy-prod: check-registry
 lint:
 	helm lint $(HELM_CHART) -f $(HELM_CHART)/values.yaml -f $(HELM_CHART)/values-staging.yaml
 	helm template test $(HELM_CHART) -f $(HELM_CHART)/values.yaml -f $(HELM_CHART)/values-staging.yaml > /dev/null
+
+test:
+	helm test $(HELM_RELEASE) -n $(HELM_NS) --timeout 120s
+
+backup:
+	kubectl create job --from=cronjob/$(HELM_RELEASE)-backup $(HELM_RELEASE)-manual-backup -n $(HELM_NS) --wait --timeout=600s
 
 check-registry:
 	@if [ -z "$$(docker images registry.openmoodle.local/openmoodle/moodle-app --format '{{.Tag}}' | head -1)" ]; then \

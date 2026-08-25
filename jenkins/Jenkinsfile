@@ -29,6 +29,17 @@ pipeline {
         sh 'docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --severity HIGH,CRITICAL ${IMAGE_NGINX}:${IMAGE_TAG} || exit 1'
       }
     }
+    stage('Sign Images') {
+      when { branch 'main' }
+      steps {
+        script {
+          sh '''
+            COSIGN_EXPERIMENTAL=1 cosign sign --yes ${IMAGE_MOODLE}:${IMAGE_TAG}
+            COSIGN_EXPERIMENTAL=1 cosign sign --yes ${IMAGE_NGINX}:${IMAGE_TAG}
+          '''
+        }
+      }
+    }
     stage('Publish') {
       steps {
         script {

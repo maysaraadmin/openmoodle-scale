@@ -1,0 +1,83 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluent-bit-fluent-bit-config
+  namespace: kube-system
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush        5
+        Daemon       Off
+        Log_Level    info
+        Parsers_File parsers.conf
+        [SERVICE.Filters]
+        # Filter out noisy kubelet logs if needed
+
+    [INPUT]
+        Name              tail
+        Tag               kube.*
+        Exclude_Path      /var/log/pods/kube-system_*/*/*.log
+        Parser            docker
+        Path              /var/log/containers/*.log
+        Refresh_Interval  5
+        Mem_Buf_Limit     5MB
+        Skip_Long_Lines   On
+        DB                /var/log/flb_kube.db
+        DB.Sync           Normal
+
+    [FILTER]
+        Name                kubernetes
+        Match               kube.*
+        Kube_URL            https://kubernetes.default.svc:443
+        Kube_CA_File        /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        Kube_Token_File     /var/run/secrets/kubernetes.io/serviceaccount/token
+        Merge_Log           On
+        K8S-Logging.Parser  On
+        K8S-Logging.Exclude On
+
+    [FILTER]
+        Name                nest
+        Match               kube.*
+        Operation           lift
+        Nested_Under        kubernetes
+        Add_Entry           labels app_kubernetes_io_name ${labels["app.kubernetes.io/name"]}
+        Add_Entry           labels app_kubernetes_io_instance ${labels["app.kubernetes.io/instance"]}
+        Add_Entry           labels namespace ${labels["kubernetes.io/metadata.name"]}
+        Remove_Entry        kubernetes
+
+    [OUTPUT]
+        Name            stdout
+        Match           *
+        Format          json_lines
+
+  parsers.conf: |
+    [PARSER]
+        Name        docker
+        Format      json
+        Time_Key    time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L%z
+        Time_Keep   On
+        Command     |-
+
+  # Uncomment one of the following output sections for production log aggregation:
+
+  # Loki output example:
+  # [OUTPUT]
+  #     Name            loki
+  #     Match           *
+  #     Host            loki.monitoring.svc.cluster.local
+  #     Port            3100
+  #     Tenant_ID       ""
+  #     Labels          job=fluentbit,app_kubernetes_io_name=${app_kubernetes_io_name},namespace=${namespace}
+  #     Auto_Kubernetes_Labels On
+
+  # Elasticsearch output example:
+  # [OUTPUT]
+  #     Name            es
+  #     Match           *
+  #     Host            elasticsearch.monitoring.svc.cluster.local
+  #     Port            9200
+  #     Index           openmoodle-logs
+  #     Type            _doc
+  #     Replace_Dots    On
+  #     Logstash_Format On

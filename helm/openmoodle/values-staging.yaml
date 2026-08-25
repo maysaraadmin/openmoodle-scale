@@ -16,10 +16,12 @@ database: { host: "", name: moodle_staging, user: moodle, port: 3306 }
 
 secrets:
   existingSecret: ""
-  create: true
-  databasePassword: changeme-staging-db
-  adminPassword: changeme-staging-admin
-  redisPassword: changeme-staging-redis
+  create: false
+  databasePassword: ""
+  adminPassword: ""
+  minioAccessKey: ""
+  minioSecretKey: ""
+  redisPassword: ""
 
 redis:
   enabled: true
@@ -27,7 +29,7 @@ redis:
   cluster: true
   auth:
     enabled: true
-    password: changeme-staging-redis
+    password: ""
 
 mariadb:
   enabled: true
@@ -37,8 +39,8 @@ mariadb:
 
 minio:
   enabled: true
-  accessKey: changeme-staging-minio
-  secretKey: changeme-staging-minio
+  accessKey: ""
+  secretKey: ""
 
 moodledata:
   size: 50Gi
@@ -103,6 +105,17 @@ networkPolicy:
   enabled: true
   ingressNamespaceSelector:
     kubernetes.io/metadata.name: ingress-nginx
+
+backup:
+  enabled: true
+  schedule: "0 2 * * *"
+  minio:
+    enabled: true
+    endpoint: minio.minio.svc.cluster.local:9000
+    bucket: backups-staging
+  retention:
+    enabled: true
+    days: 14
 
 podManagement:
   terminationGracePeriodSeconds: 60

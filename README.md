@@ -5,43 +5,45 @@ Open-source deployment blueprint for running Moodle at scale with Kubernetes, Op
 ## Architecture
 
 ```
-                    +------------------+
-                    |   Ingress NGINX  |
-                    +--------+---------+
-                             |
-                    +--------+---------+
-                    |     Varnish       |
-                    |  (optional cache) |
-                    +--------+---------+
-                             |
-               +-------------+-------------+
-               |                           |
-        +------+------+           +--------+--------+
-        | Moodle App  |           |   Moodle Web     |
-        | PHP-FPM x N |           |   Nginx x N      |
-        +------+------+           +------------------+
-               |                           |
-        +------+------+                    |
-        |   Shared    |                    |
-        | Persistent  |                    |
-        |   Volume    |                    |
-        | (moodledata)|                    |
-        +------+------+                    |
-               |                           |
-    +----------+----------+                |
-    |          |          |                |
-+---+---+ +----+----+ +--+-----+          |
-| MariaDB| | Redis   | | MinIO  |          |
-|Primary | |Cluster  | |(S3)    |          |
-|+Replica| |         | |        |          |
-+---+---+ +---------+ +--------+          |
-                                           |
-        +----------------------------------+
-        |    Prometheus + Grafana + Alerts  |
-        |    Fluent Bit (centralized logs)  |
-        +----------------------------------+
+                     +------------------+
+                     |   Ingress NGINX  |
+                     +--------+---------+
+                              |
+                     +--------+---------+
+                     |     Varnish       |
+                     |  (optional cache) |
+                     +--------+---------+
+                              |
+                +-------------+-------------+
+                |                           |
+         +------+------+           +--------+--------+
+         | Moodle App  |           |   Moodle Web     |
+         | PHP-FPM x N |           |   Nginx x N      |
+         +------+------+           +------------------+
+                |                           |
+         +------+------+                    |
+         |   Shared    |                    |
+         | Persistent  |                    |
+         |   Volume    |                    |
+         | (moodledata)|                    |
+         +------+------+                    |
+                |                           |
+     +----------+----------+                |
+     |          |          |                |
+ +---+---+ +----+----+ +--+-----+          |
+ | MariaDB| | Redis   | | MinIO  |          |
+ |Primary | |Cluster  | |(S3)    |          |
+ |+Replica| |(Sentinel| |        |          |
+ +---+---+ |recommended| +--------+          |
+           |for sessions)                    |
+           +---------+----------------------+
+         |    Prometheus + Grafana + Alerts  |
+         |    Fluent Bit (centralized logs)  |
+         +----------------------------------+
 
 ```
+
+**Note:** For session storage, Redis Sentinel is recommended over Redis Cluster. Sentinel provides lower latency for session reads/writes and simpler operational model. Redis Cluster is better suited for sharding large datasets, not for session storage.
 
 ## Prerequisites
 
@@ -51,6 +53,7 @@ Open-source deployment blueprint for running Moodle at scale with Kubernetes, Op
 - **kubectl** configured for the target cluster
 - **Docker** for image builds
 - **MinIO client (mc)** for backup offsite
+- **Git Bash or WSL** on Windows (Makefile uses bash syntax)
 - A private container registry reachable from the cluster
 - At least 3 nodes (1 control-plane, 2 workers) with:
   - 16 GB RAM, 4 vCPU each
@@ -253,17 +256,169 @@ kubectl describe pvc -n moodle-prod openmoodle-prod-openmoodle-moodledata
 
 - All containers run as non-root with `readOnlyRootFilesystem: true`
 - `allowPrivilegeEscalation: false` and `capabilities: drop [ALL]`
+- Pod Security Admission enforced at `restricted` level
 - NetworkPolicy restricts traffic to ingress controller and required backends
 - Secrets should be managed via External Secrets Operator or Vault in production
-- Image scanning runs in CI before deployment
+- Image scanning runs in CI before deployment with Trivy
+- Images are signed with cosign in the CI/CD pipeline
 - Redis authentication is enabled via chart values
+- MariaDB passwords are no longer committed to source control
+- UFW firewall enabled on all nodes with only SSH, k8s API, and kubelet allowed
+- Unattended security upgrades enabled on all nodes
+- Terraform state should be stored in an encrypted remote backend (S3 + DynamoDB)
+
+## Secrets Management
+
+For production, never store secrets in plaintext values files. Use one of:
+
+- **External Secrets Operator (ESO)** — sync secrets from AWS SSM, HashiCorp Vault, or other providers into Kubernetes Secrets
+- **HashiCorp Vault** — inject secrets directly into pods with Vault Agent Injector
+- **Sealed Secrets** — encrypt secrets that can only be decrypted by the cluster controller
+
+Example with ESO:
+```bash
+helm repo add external-secrets https://charts.external-secrets.io
+helm install external-secrets external-secrets/external-secrets -n external-secrets --create-namespace
+```
+
+## Automated Backups
+
+Production enables a Kubernetes CronJob (`backup.enabled: true`) that runs daily at 2 AM and:
+
+- Dumps MariaDB with `--single-transaction`
+- Archives `/var/moodledata`
+- Retains backups for 30 days (configurable)
+- Stores backups locally on the cluster PVC
+
+For offsite storage, use the manual `scripts/backup.sh` with MinIO client (`mc`) to upload backups to S3-compatible storage.
+
+Manual backup commands remain available for ad-hoc use.
+
+## GitOps with ArgoCD
+
+ArgoCD Application manifests are provided in `helm/openmoodle/argocd/`. Deploy them to enable:
+
+- Automated sync from the main branch
+- Drift detection and self-healing
+- Visual deployment history and rollback
+- Promotion workflows between staging and production
+
+## Terraform Remote Backend
+
+For production, configure a remote backend in `tofu/backend.tf`:
+
+```hcl
+terraform {
+  backend "s3" {
+    bucket         = "openmoodle-terraform-state"
+    key            = "infra/terraform.tfstate"
+    region         = "us-east-1"
+    encrypt        = true
+    dynamodb_table = "openmoodle-terraform-locks"
+  }
+}
+```
+
+Initialize the backend:
+```bash
+cd tofu
+tofu init -migrate-state
+```
+
+## Database Connection Pooling
+
+For high-traffic deployments, consider adding a connection pooler like ProxySQL or MaxScale between Moodle and MariaDB to reduce connection overhead during traffic spikes.
+
+## CI/CD Pipeline
+
+The Jenkins pipeline includes:
+
+1. **Lint** — yamllint, terraform fmt check
+2. **Validate** — helm dependency build, helm lint, helm template, Docker build
+3. **Security Scan** — Trivy scan for HIGH/CRITICAL CVEs
+4. **Sign Images** — cosign signs images with keyless provenance (main branch only)
+5. **Publish** — Push images and capture repo digests
+6. **Load Test** — k6 smoke test against staging covering login, course pages, static assets, and API endpoints
+7. **Deploy** — Helm upgrade to production with digest-pinned tags
+
+## Monitoring
+
+Access Grafana at the ingress host. The `OpenMoodleScale Overview` dashboard includes:
+
+- HTTP request rate and p95 latency
+- Moodle app CPU and memory
+- MariaDB connections
+- Redis connected clients and memory
+- PVC usage
+- Nginx active connections
+- Pod restart count
+- HPA replica count
+
+### Alerts
+
+| Alert | Severity | Condition |
+|-------|----------|-----------|
+| MoodleHighErrorRate | critical | HTTP 5xx rate > 5% for 5m |
+| MoodlePodsCrashLooping | critical | App pod restarts > 0 for 15m |
+| MoodleHighMemoryUsage | warning | Memory > 90% limit for 5m |
+| MoodleHPAMaxedOut | warning | HPA at max replicas for 10m |
+| MoodlePodPending | warning | Pods stuck in Pending for 5m |
+| MoodlePVCUsageHigh | warning | PVC > 85% used for 5m |
+| MoodleDBCritical | critical | MariaDB connections > 150 |
+| MoodleRedisDown | critical | Redis unreachable for 2m |
+| MoodleCertExpirySoon | warning | TLS cert expires within 7 days |
+| MoodleNginxUpstreamErrors | critical | Upstream 5xx errors |
+
+## Logging
+
+Fluent Bit runs as a DaemonSet in `kube-system`, tailing container logs and shipping JSON to stdout. Configure Fluent Bit outputs in `monitoring/fluent-bit/configmap.yaml` to forward logs to Loki, Elasticsearch, Splunk, or other aggregators.
+
+## Troubleshooting
+
+### Pods won't start after deploy
+
+```bash
+kubectl describe pod -n moodle-prod -l app.kubernetes.io/name=openmoodle
+kubectl logs -n moodle-prod <pod-name> -c moodle-app
+```
+
+### Database connection failures
+
+```bash
+kubectl exec -n moodle-prod <mariadb-pod> -- mariadb -u moodle -p -e "SHOW PROCESSLIST"
+kubectl get pods -n moodle-prod -l app.kubernetes.io/name=mariadb
+```
+
+### Redis session issues
+
+```bash
+kubectl exec -n moodle-prod <redis-pod> -- redis-cli ping
+kubectl logs -n moodle-prod <moodle-app-pod> | grep -i redis
+```
+
+### PVC not binding
+
+```bash
+kubectl get pvc -n moodle-prod
+kubectl get storageclass
+kubectl describe pvc -n moodle-prod openmoodle-prod-openmoodle-moodledata
+```
+
+### Backup job failing
+
+```bash
+kubectl get cronjob -n moodle-prod openmoodle-prod-openmoodle-backup
+kubectl get job -n moodle-prod -l app.kubernetes.io/name=openmoodle
+kubectl logs -n moodle-prod <backup-job-pod>
+```
 
 ## Contributing
 
 1. Fork and create a feature branch
 2. Run `make lint` before committing
 3. Validate with `helm template` against both staging and prod values
-4. Submit a PR
+4. Run `helm test openmoodle-prod --namespace moodle-prod` after deployment
+5. Submit a PR
 
 ## License
 

@@ -1,0 +1,15 @@
+{{- if .Values.backup.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "openmoodle.fullname" . }}-backup
+  labels: {{- include "openmoodle.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "openmoodle.fullname" . }}-backup
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "openmoodle.fullname" . }}-backup
+{{- end }}
