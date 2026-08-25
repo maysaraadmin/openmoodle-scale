@@ -3,6 +3,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: {{ include "openmoodle.fullname" . }}
+  annotations: {{- toYaml .Values.ingress.annotations | nindent 4 }}
 spec:
   ingressClassName: {{ .Values.ingress.className }}
   rules:
@@ -16,7 +17,10 @@ spec:
             backend: { service: { name: {{ include "openmoodle.fullname" $ }}, port: { number: 80 } } }
           {{- end }}
     {{- end }}
-  {{- with .Values.ingress.tls }}
-  tls: {{- toYaml . | nindent 4 }}
+  {{- if not .Values.ingress.tls }}
+  {{- fail "ingress.tls must be configured when ingress.enabled is true" }}
+  {{- else }}
+  tls: {{- toYaml .Values.ingress.tls | nindent 4 }}
+  {{- end }}
   {{- end }}
 {{- end }}

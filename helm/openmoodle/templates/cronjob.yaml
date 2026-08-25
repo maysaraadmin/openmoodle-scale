@@ -6,24 +6,38 @@ metadata:
 spec:
   schedule: {{ .Values.cron.schedule | quote }}
   concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 300
   jobTemplate:
     spec:
       template:
         spec:
           restartPolicy: OnFailure
+          securityContext: { seccompProfile: { type: RuntimeDefault } }
           containers:
             - name: moodle-cron
               image: "{{ .Values.global.imageRegistry }}/{{ .Values.moodle.image.repository }}:{{ .Values.moodle.image.tag }}"
+              imagePullPolicy: {{ .Values.moodle.image.pullPolicy }}
+              securityContext:
+                runAsNonRoot: true
+                runAsUser: 33
+                allowPrivilegeEscalation: false
+                capabilities: { drop: [ALL] }
               command: [php, /var/www/html/admin/cli/cron.php]
+              resources: {{- toYaml .Values.moodle.resources | nindent 16 }}
               env:
-                - { name: DB_HOST, value: {{ .Values.database.host | quote }} }
+                - { name: DB_HOST, value: {{ include "openmoodle.databaseHost" . | quote }} }
                 - { name: DB_NAME, value: {{ .Values.database.name | quote }} }
                 - { name: DB_USER, value: {{ .Values.database.user | quote }} }
                 - name: DB_PASSWORD
-                  valueFrom: { secretKeyRef: { name: {{ include "openmoodle.fullname" . }}-secrets, key: database-password } }
+                  valueFrom: { secretKeyRef: { name: {{ include "openmoodle.secretName" . }}, key: database-password } }
               volumeMounts:
                 - { name: config, mountPath: /var/www/html/config.php, subPath: config.php }
+                - { name: moodledata, mountPath: /var/moodledata }
           volumes:
             - name: config
               configMap: { name: {{ include "openmoodle.fullname" . }}-config }
+            - name: moodledata
+              persistentVolumeClaim: { claimName: {{ include "openmoodle.fullname" . }}-moodledata }
 {{- end }}

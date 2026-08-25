@@ -15,13 +15,22 @@ pipeline {
     }
     stage('Validate') {
       steps {
+        sh 'helm dependency build helm/openmoodle'
         sh 'helm lint helm/openmoodle'
+        sh 'helm template openmoodle-prod helm/openmoodle --set ingress.tls[0].hosts[0]=moodle.example.com --set ingress.tls[0].secretName=moodle-tls --set secrets.existingSecret=moodle-secrets > rendered.yaml'
+        sh 'grep -q "change-me" rendered.yaml && exit 1 || true'
         sh 'docker run --rm ${IMAGE_MOODLE}:${IMAGE_TAG} php -m'
+      }
+    }
+    stage('Publish') {
+      steps {
+        sh 'docker push ${IMAGE_MOODLE}:${IMAGE_TAG}'
+        sh 'docker push ${IMAGE_NGINX}:${IMAGE_TAG}'
       }
     }
     stage('Deploy') {
       when { branch 'main' }
-      steps { sh 'helm upgrade --install openmoodle-prod helm/openmoodle --namespace moodle-prod --create-namespace --set moodle.image.tag=${IMAGE_TAG} --wait' }
+      steps { sh 'helm upgrade --install openmoodle-prod helm/openmoodle --namespace moodle-prod --create-namespace --set moodle.image.tag=${IMAGE_TAG} --set moodle.nginx.tag=${IMAGE_TAG} --wait --atomic --timeout 10m' }
     }
   }
   post { always { sh 'docker system prune -f || true' } }

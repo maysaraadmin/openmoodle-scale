@@ -5,4 +5,5 @@ metadata:
 spec:
   minAvailable: {{ max 1 (sub .Values.moodle.replicaCount 1) }}
   selector:
-    matchLabels: { app.kubernetes.io/name: {{ include "openmoodle.name" . }} }
+    matchLabels:
+      {{- include "openmoodle.labels" . | nindent 6 }}

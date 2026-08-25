@@ -6,30 +6,59 @@ metadata:
 spec:
   replicas: {{ .Values.moodle.replicaCount }}
   selector:
-    matchLabels: { app.kubernetes.io/name: {{ include "openmoodle.name" . }} }
+    matchLabels:
+      {{- include "openmoodle.labels" . | nindent 6 }}
   template:
     metadata:
-      labels: { app.kubernetes.io/name: {{ include "openmoodle.name" . }} }
+      labels:
+        {{- include "openmoodle.labels" . | nindent 8 }}
     spec:
+      securityContext:
+        seccompProfile: { type: RuntimeDefault }
+        fsGroup: 33
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ include "openmoodle.name" . }}
+              app.kubernetes.io/instance: {{ .Release.Name }}
       containers:
         - name: moodle-app
           image: "{{ .Values.global.imageRegistry }}/{{ .Values.moodle.image.repository }}:{{ .Values.moodle.image.tag }}"
+          imagePullPolicy: {{ .Values.moodle.image.pullPolicy }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 33
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
           ports: [{ name: fastcgi, containerPort: 9000 }]
+          readinessProbe: { tcpSocket: { port: fastcgi }, initialDelaySeconds: 10, periodSeconds: 10 }
+          livenessProbe: { tcpSocket: { port: fastcgi }, initialDelaySeconds: 30, periodSeconds: 20 }
           env:
-            - { name: DB_HOST, value: {{ .Values.database.host | quote }} }
+            - { name: DB_HOST, value: {{ include "openmoodle.databaseHost" . | quote }} }
             - { name: DB_NAME, value: {{ .Values.database.name | quote }} }
             - { name: DB_USER, value: {{ .Values.database.user | quote }} }
             - name: DB_PASSWORD
-              valueFrom: { secretKeyRef: { name: {{ include "openmoodle.fullname" . }}-secrets, key: database-password } }
+              valueFrom: { secretKeyRef: { name: {{ include "openmoodle.secretName" . }}, key: database-password } }
             - name: DB_PASS
-              valueFrom: { secretKeyRef: { name: {{ include "openmoodle.fullname" . }}-secrets, key: database-password } }
+              valueFrom: { secretKeyRef: { name: {{ include "openmoodle.secretName" . }}, key: database-password } }
           volumeMounts:
             - { name: moodledata, mountPath: /var/moodledata }
             - { name: config, mountPath: /var/www/html/config.php, subPath: config.php }
           resources: {{- toYaml .Values.moodle.resources | nindent 12 }}
         - name: moodle-web
           image: "{{ .Values.global.imageRegistry }}/{{ .Values.moodle.nginx.repository }}:{{ .Values.moodle.nginx.tag }}"
+          imagePullPolicy: {{ .Values.moodle.nginx.pullPolicy }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 101
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
           ports: [{ name: http, containerPort: 8080 }]
+          readinessProbe: { httpGet: { path: /login/index.php, port: http }, initialDelaySeconds: 10, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /login/index.php, port: http }, initialDelaySeconds: 30, periodSeconds: 20 }
           resources:
             requests: { cpu: 100m, memory: 128Mi }
             limits: { cpu: 500m, memory: 256Mi }

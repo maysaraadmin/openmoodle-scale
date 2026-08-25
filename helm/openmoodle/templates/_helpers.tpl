@@ -9,3 +9,12 @@ app.kubernetes.io/name: {{ include "openmoodle.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
+{{- define "openmoodle.secretName" -}}
+{{- default (printf "%s-secrets" (include "openmoodle.fullname" .)) .Values.secrets.existingSecret -}}
+{{- end }}
+{{- define "openmoodle.databaseHost" -}}
+{{- default (printf "%s-mariadb" .Release.Name) .Values.database.host -}}
+{{- end }}
+{{- define "openmoodle.redisHost" -}}
+{{- default (printf "%s-redis-cluster" .Release.Name) .Values.redis.host -}}
+{{- end }}

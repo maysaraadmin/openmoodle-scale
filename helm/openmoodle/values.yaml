@@ -3,8 +3,8 @@ global:
   imageRegistry: registry.openmoodle.local
 moodle:
   replicaCount: 3
-  image: { repository: openmoodle/moodle-app, tag: latest, pullPolicy: IfNotPresent }
-  nginx: { repository: openmoodle/moodle-nginx, tag: latest }
+  image: { repository: openmoodle/moodle-app, tag: "4.4.0", pullPolicy: IfNotPresent }
+  nginx: { repository: openmoodle/moodle-nginx, tag: "4.4.0", pullPolicy: IfNotPresent }
   resources:
     requests: { cpu: 500m, memory: 1Gi }
     limits: { cpu: 2000m, memory: 4Gi }
@@ -13,13 +13,15 @@ hpa:
   minReplicas: 3
   maxReplicas: 20
   targetCPUUtilizationPercentage: 70
-database: { host: mariadb-primary, name: moodle, user: moodle }
+database: { host: "", name: moodle, user: moodle }
 secrets:
-  databasePassword: change-me
-  adminPassword: change-me
-  minioAccessKey: change-me
-  minioSecretKey: change-me
-redis: { enabled: true }
+  existingSecret: ""
+  create: false
+  databasePassword: ""
+  adminPassword: ""
+  minioAccessKey: ""
+  minioSecretKey: ""
+redis: { enabled: true, host: "" }
 mariadb: { enabled: true }
 minio: { enabled: true }
 moodledata: { size: 100Gi, accessMode: ReadWriteMany }
@@ -30,8 +32,13 @@ ingress:
     - host: moodle.openmoodle.local
       paths: [{ path: /, pathType: Prefix }]
   tls: []
+  annotations: {}
 cron: { enabled: true, schedule: "*/5 * * * *" }
 varnish: { enabled: false, replicaCount: 2, cacheSize: 2G }
 monitoring:
-  enabled: false
+  enabled: true
   serviceMonitor: { enabled: false, interval: 30s }
+networkPolicy:
+  enabled: true
+  ingressNamespaceSelector:
+    kubernetes.io/metadata.name: ingress-nginx
