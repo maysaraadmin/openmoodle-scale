@@ -2,5 +2,15 @@
 *.tfstate.*
 .terraform/
 *.tfvars
+*.tfvars.json
 backup/
 *.tar.gz
+secrets.yaml
+secrets.yaml.enc
+secrets/
+values-local.yaml
+values-*.local.yaml
+.env
+.env.*
+inventory.ini
+.kube/

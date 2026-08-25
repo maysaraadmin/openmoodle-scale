@@ -1,5 +1,0 @@
----
-- name: Install Kubernetes control-plane packages
-  ansible.builtin.apt:
-    name: [kubeadm, kubelet, kubectl]
-    state: present

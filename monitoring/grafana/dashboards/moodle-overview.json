@@ -1,6 +1,200 @@
 {
   "title": "OpenMoodleScale Overview",
   "schemaVersion": 39,
-  "panels": [],
-  "tags": ["moodle", "kubernetes"]
+  "description": "Moodle cluster health, performance, and infrastructure overview",
+  "tags": ["moodle", "kubernetes"],
+  "timepicker": {
+    "time_options": ["5m", "15m", "1h", "6h", "12h", "24h"],
+    "refresh_intervals": ["30s", "1m", "5m", "15m"]
+  },
+  "panels": [
+    {
+      "title": "Request Rate (HTTP)",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(nginx_http_requests_total{job=\"openmoodle\"}[5m])) by (status)",
+          "legendFormat": "{{status}}"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 }
+    },
+    {
+      "title": "95th Percentile Response Time",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(nginx_http_request_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95 response time"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 }
+    },
+    {
+      "title": "Moodle App CPU",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(container_cpu_usage_seconds_total{container=\"moodle-app\", job=\"openmoodle\"}[5m])) by (pod)",
+          "legendFormat": "{{pod}}"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 }
+    },
+    {
+      "title": "Moodle App Memory",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "container_memory_working_set_bytes{container=\"moodle-app\"} / 1024 / 1024",
+          "legendFormat": "{{pod}} (MB)"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 }
+    },
+    {
+      "title": "MariaDB Connections",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "mysql_global_status_threads_connected{job=\"openmoodle-mariadb\"}",
+          "legendFormat": "Connected threads"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 }
+    },
+    {
+      "title": "Redis Connected Clients",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "redis_connected_clients{job=\"openmoodle-redis\"}",
+          "legendFormat": "Connected clients"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 }
+    },
+    {
+      "title": "Pod Restarts",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(changes(kube_pod_container_status_restarts_total{namespace=~\"openmoodle.*\"}[15m])) by (pod)",
+          "legendFormat": "{{pod}}"
+        }
+      ],
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 24 }
+    },
+    {
+      "title": "HPA Current Replicas",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "kube_horizontalpodautoscaler_status_current_replicas{horizontalpodautoscaler=\"openmoodle\"}",
+          "legendFormat": "Current replicas"
+        }
+      ],
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 24 }
+    },
+    {
+      "title": "PVC Usage",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "kubelet_volume_stats_used_bytes{namespace=~\"openmoodle.*\", persistentvolumeclaim=\"openmoodle-moodledata\"} / 1024 / 1024 / 1024",
+          "legendFormat": "Used (GB)"
+        },
+        {
+          "expr": "kubelet_volume_stats_capacity_bytes{namespace=~\"openmoodle.*\", persistentvolumeclaim=\"openmoodle-moodledata\"} / 1024 / 1024 / 1024",
+          "legendFormat": "Capacity (GB)"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 30 }
+    },
+    {
+      "title": "Nginx Active Connections",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "nginx_connections_active{job=\"openmoodle\"}",
+          "legendFormat": "Active"
+        },
+        {
+          "expr": "nginx_connections_reading{job=\"openmoodle\"}",
+          "legendFormat": "Reading"
+        },
+        {
+          "expr": "nginx_connections_writing{job=\"openmoodle\"}",
+          "legendFormat": "Writing"
+        },
+        {
+          "expr": "nginx_connections_waiting{job=\"openmoodle\"}",
+          "legendFormat": "Waiting"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 30 }
+    },
+    {
+      "title": "Redis Memory Usage",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "redis_memory_used_bytes{job=\"openmoodle-redis\"} / 1024 / 1024",
+          "legendFormat": "Used (MB)"
+        },
+        {
+          "expr": "redis_memory_max_bytes{job=\"openmoodle-redis\"} / 1024 / 1024",
+          "legendFormat": "Max (MB)"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 38 }
+    },
+    {
+      "title": "MinIO Disk Usage",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "minio_bucket_usage_size{job=\"openmoodle-minio\"} / 1024 / 1024 / 1024",
+          "legendFormat": "{{bucket}} (GB)"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 38 }
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "namespace",
+        "type": "query",
+        "datasource": "Prometheus",
+        "query": "kube_namespace_annotations{::1=\"kubernetes.io/metadata.name\"}",
+        "includeCount": true,
+        "multi": false,
+        "refresh": 1,
+        "current": { "text": "Namespace", "value": "$__all" }
+      }
+    ]
+  },
+  "annotations": {
+    "list": [
+      {
+        "name": "Alerts",
+        "datasource": "Prometheus",
+        "expr": "ALERTS{alertstate=\"pending\", namespace=~\"openmoodle.*\"}",
+        "titleFormat": "{{alertname}}"
+      }
+    ]
+  }
 }

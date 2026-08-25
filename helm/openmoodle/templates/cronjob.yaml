@@ -2,7 +2,7 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: {{ include "openmoodle.fullname" . }}-cron
+  name: {{ include("openmoodle.fullname", .) }}-cron
 spec:
   schedule: {{ .Values.cron.schedule | quote }}
   concurrencyPolicy: Forbid
@@ -19,25 +19,35 @@ spec:
             - name: moodle-cron
               image: "{{ .Values.global.imageRegistry }}/{{ .Values.moodle.image.repository }}:{{ .Values.moodle.image.tag }}"
               imagePullPolicy: {{ .Values.moodle.image.pullPolicy }}
-              securityContext:
-                runAsNonRoot: true
-                runAsUser: 33
-                allowPrivilegeEscalation: false
-                capabilities: { drop: [ALL] }
-              command: [php, /var/www/html/admin/cli/cron.php]
-              resources: {{- toYaml .Values.moodle.resources | nindent 16 }}
-              env:
-                - { name: DB_HOST, value: {{ include "openmoodle.databaseHost" . | quote }} }
-                - { name: DB_NAME, value: {{ .Values.database.name | quote }} }
-                - { name: DB_USER, value: {{ .Values.database.user | quote }} }
-                - name: DB_PASSWORD
-                  valueFrom: { secretKeyRef: { name: {{ include "openmoodle.secretName" . }}, key: database-password } }
-              volumeMounts:
-                - { name: config, mountPath: /var/www/html/config.php, subPath: config.php }
-                - { name: moodledata, mountPath: /var/moodledata }
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 33
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+            readOnlyRootFilesystem: true
+          command: [php, /var/www/html/admin/cli/cron.php]
+          resources: {{- toYaml .Values.moodle.resources | nindent 16 }}
+          env:
+            - { name: DB_HOST, value: {{ include("openmoodle.databaseHost", .) | quote }} }
+            - { name: DB_NAME, value: {{ .Values.database.name | quote }} }
+            - { name: DB_USER, value: {{ .Values.database.user | quote }} }
+            - { name: DB_PASSWORD, valueFrom: { secretKeyRef: { name: {{ include("openmoodle.secretName", .) }}, key: database-password } } }
+            {{- if .Values.fileStorage.enabled }}
+            - name: S3_ACCESS_KEY
+              valueFrom: { secretKeyRef: { name: {{ include("openmoodle.secretName", .) }}, key: s3-access-key } }
+            - name: S3_SECRET_KEY
+              valueFrom: { secretKeyRef: { name: {{ include("openmoodle.secretName", .) }}, key: s3-secret-key } }
+            {{- end }}
+          volumeMounts:
+            - { name: config, mountPath: /var/www/html/config.php, subPath: config.php, readOnly: true }
+            - { name: moodledata, mountPath: /var/moodledata }
+            - { name: tmp, mountPath: /tmp }
           volumes:
             - name: config
-              configMap: { name: {{ include "openmoodle.fullname" . }}-config }
+              configMap: { name: {{ include("openmoodle.fullname", .) }}-config }
+              readOnly: true
             - name: moodledata
-              persistentVolumeClaim: { claimName: {{ include "openmoodle.fullname" . }}-moodledata }
+              persistentVolumeClaim: { claimName: {{ include("openmoodle.fullname", .) }}-moodledata }
+            - name: tmp
+              emptyDir: {}
 {{- end }}

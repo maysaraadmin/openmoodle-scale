@@ -3,31 +3,23 @@ global:
   imageRegistry: registry.openmoodle.local
 
 moodle:
-  replicaCount: 3
+  replicaCount: 2
   image: { repository: openmoodle/moodle-app, tag: "4.4.0", pullPolicy: IfNotPresent }
   nginx: { repository: openmoodle/moodle-nginx, tag: "4.4.0", pullPolicy: IfNotPresent }
-  imagePullSecrets: []
-  resources:
-    requests: { cpu: 500m, memory: 1Gi }
-    limits: { cpu: 2000m, memory: 4Gi }
 
 hpa:
   enabled: true
-  minReplicas: 3
-  maxReplicas: 20
-  targetCPUUtilizationPercentage: 70
-  targetMemoryUtilizationPercentage: 80
+  minReplicas: 2
+  maxReplicas: 5
 
-database: { host: "", name: moodle, user: moodle, port: 3306 }
+database: { host: "", name: moodle_staging, user: moodle, port: 3306 }
 
 secrets:
   existingSecret: ""
-  create: false
-  databasePassword: ""
-  adminPassword: ""
-  minioAccessKey: ""
-  minioSecretKey: ""
-  redisPassword: ""
+  create: true
+  databasePassword: changeme-staging-db
+  adminPassword: changeme-staging-admin
+  redisPassword: changeme-staging-redis
 
 redis:
   enabled: true
@@ -35,24 +27,21 @@ redis:
   cluster: true
   auth:
     enabled: true
-    password: ""
-  commonConfiguration: |-
-    maxmemory 2gb
-    maxmemory-policy allkeys-lru
+    password: changeme-staging-redis
 
 mariadb:
   enabled: true
   architecture: replication
-  primary: { persistence: { enabled: true, size: 20Gi } }
-  secondary: { replicaCount: 1, persistence: { enabled: true, size: 20Gi } }
+  primary: { persistence: { enabled: true, size: 10Gi } }
+  secondary: { replicaCount: 1, persistence: { enabled: true, size: 10Gi } }
 
 minio:
   enabled: true
-  accessKey: ""
-  secretKey: ""
+  accessKey: changeme-staging-minio
+  secretKey: changeme-staging-minio
 
 moodledata:
-  size: 100Gi
+  size: 50Gi
   accessMode: ReadWriteOnce
 
 cache:
@@ -67,24 +56,20 @@ fileStorage:
   enabled: false
   s3:
     host: ""
-    bucket: moodledata
+    bucket: moodledata-staging
     accessKey: ""
     secretKey: ""
     region: us-east-1
     useSSL: true
 
 ingress:
-  enabled: true
+  enabled: false
   className: nginx
   hosts:
-    - host: moodle.openmoodle.local
+    - host: moodle-staging.example.com
       paths: [{ path: /, pathType: Prefix }]
   tls: []
   annotations: {}
-  certManager:
-    enabled: false
-    issuerName: letsencrypt-prod
-    issuerKind: ClusterIssuer
 
 cron: { enabled: true, schedule: "*/5 * * * *" }
 
@@ -110,9 +95,6 @@ preStopHook:
   enabled: true
   timeoutSeconds: 30
 
-initJob:
-  enabled: true
-
 monitoring:
   enabled: true
   serviceMonitor: { enabled: true, interval: 30s }
@@ -124,3 +106,6 @@ networkPolicy:
 
 podManagement:
   terminationGracePeriodSeconds: 60
+
+initJob:
+  enabled: true

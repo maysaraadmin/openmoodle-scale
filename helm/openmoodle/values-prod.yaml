@@ -3,31 +3,25 @@ global:
   imageRegistry: registry.openmoodle.local
 
 moodle:
-  replicaCount: 3
+  replicaCount: 5
   image: { repository: openmoodle/moodle-app, tag: "4.4.0", pullPolicy: IfNotPresent }
   nginx: { repository: openmoodle/moodle-nginx, tag: "4.4.0", pullPolicy: IfNotPresent }
-  imagePullSecrets: []
   resources:
     requests: { cpu: 500m, memory: 1Gi }
     limits: { cpu: 2000m, memory: 4Gi }
 
 hpa:
   enabled: true
-  minReplicas: 3
-  maxReplicas: 20
+  minReplicas: 5
+  maxReplicas: 50
   targetCPUUtilizationPercentage: 70
   targetMemoryUtilizationPercentage: 80
 
 database: { host: "", name: moodle, user: moodle, port: 3306 }
 
 secrets:
-  existingSecret: ""
+  existingSecret: moodle-prod-secrets
   create: false
-  databasePassword: ""
-  adminPassword: ""
-  minioAccessKey: ""
-  minioSecretKey: ""
-  redisPassword: ""
 
 redis:
   enabled: true
@@ -36,15 +30,21 @@ redis:
   auth:
     enabled: true
     password: ""
-  commonConfiguration: |-
-    maxmemory 2gb
-    maxmemory-policy allkeys-lru
 
 mariadb:
   enabled: true
   architecture: replication
-  primary: { persistence: { enabled: true, size: 20Gi } }
-  secondary: { replicaCount: 1, persistence: { enabled: true, size: 20Gi } }
+  primary:
+    persistence: { enabled: true, size: 100Gi }
+    resources:
+      requests: { cpu: 2000m, memory: 4Gi }
+      limits: { cpu: 4000m, memory: 8Gi }
+  secondary:
+    replicaCount: 2
+    persistence: { enabled: true, size: 100Gi }
+    resources:
+      requests: { cpu: 1000m, memory: 2Gi }
+      limits: { cpu: 2000m, memory: 4Gi }
 
 minio:
   enabled: true
@@ -52,8 +52,8 @@ minio:
   secretKey: ""
 
 moodledata:
-  size: 100Gi
-  accessMode: ReadWriteOnce
+  size: 500Gi
+  accessMode: ReadWriteMany
 
 cache:
   enabled: true
@@ -64,10 +64,10 @@ cache:
     ttl: 120
 
 fileStorage:
-  enabled: false
+  enabled: true
   s3:
     host: ""
-    bucket: moodledata
+    bucket: moodledata-prod
     accessKey: ""
     secretKey: ""
     region: us-east-1
@@ -77,18 +77,20 @@ ingress:
   enabled: true
   className: nginx
   hosts:
-    - host: moodle.openmoodle.local
+    - host: moodle.example.com
       paths: [{ path: /, pathType: Prefix }]
-  tls: []
-  annotations: {}
-  certManager:
-    enabled: false
-    issuerName: letsencrypt-prod
-    issuerKind: ClusterIssuer
+  tls:
+    - hosts:
+        - moodle.example.com
+      secretName: moodle-tls
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
 
 cron: { enabled: true, schedule: "*/5 * * * *" }
 
-varnish: { enabled: false, replicaCount: 2, cacheSize: 2G }
+varnish: { enabled: true, replicaCount: 3, cacheSize: 4G }
 
 livenessProbe:
   path: /health
@@ -110,12 +112,9 @@ preStopHook:
   enabled: true
   timeoutSeconds: 30
 
-initJob:
-  enabled: true
-
 monitoring:
   enabled: true
-  serviceMonitor: { enabled: true, interval: 30s }
+  serviceMonitor: { enabled: true, interval: 15s }
 
 networkPolicy:
   enabled: true
@@ -123,4 +122,7 @@ networkPolicy:
     kubernetes.io/metadata.name: ingress-nginx
 
 podManagement:
-  terminationGracePeriodSeconds: 60
+  terminationGracePeriodSeconds: 120
+
+initJob:
+  enabled: true

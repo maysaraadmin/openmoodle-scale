@@ -14,7 +14,7 @@ spec:
         - { protocol: TCP, port: 8080 }
       from:
         - namespaceSelector:
-            matchLabels: {{- toYaml .Values.networkPolicy.ingressNamespaceSelector | nindent 14 }}
+            {{- toYaml .Values.networkPolicy.ingressNamespaceSelector | nindent 14 }}
   egress:
     - ports:
         - { protocol: TCP, port: 53 }
@@ -22,5 +22,13 @@ spec:
         - { protocol: TCP, port: 3306 }
         - { protocol: TCP, port: 6379 }
         - { protocol: TCP, port: 443 }
+    {{- if .Values.fileStorage.enabled }}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - { protocol: TCP, port: 443 }
         - { protocol: TCP, port: 80 }
+        - { protocol: TCP, port: 9000 }
+    {{- end }}
 {{- end }}

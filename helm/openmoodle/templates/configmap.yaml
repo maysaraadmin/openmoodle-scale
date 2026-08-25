@@ -11,6 +11,7 @@ data:
     $CFG->dbtype = 'mariadb';
     $CFG->dblibrary = 'native';
     $CFG->dbhost = '{{ include "openmoodle.databaseHost" . }}';
+    $CFG->dbport = {{ .Values.database.port | default 3306 }};
     $CFG->dbname = '{{ .Values.database.name }}';
     $CFG->dbuser = '{{ .Values.database.user }}';
     $CFG->dbpass = getenv('DB_PASSWORD');
@@ -20,8 +21,36 @@ data:
     $CFG->session_handler_class = '\\core\\session\\redis';
     $CFG->session_redis_host = '{{ include "openmoodle.redisHost" . }}';
     $CFG->session_redis_port = 6379;
+    {{- if .Values.redis.auth.enabled }}
+    $CFG->session_redis_auth = getenv('REDIS_PASSWORD');
+    {{- end }}
     $CFG->sslproxy = true;
     $CFG->reverseproxy = true;
     $CFG->debug = 0;
     $CFG->debugdisplay = 0;
+    {{- if .Values.cache.enabled }}
+    $CFG->altcacheconfigpath = '/var/moodledata/cache';
+    $CFG->alternate_cache_factory_class = '\\cache_factory_redis';
+    $CFG->redis_cache_host = '{{ .Values.cache.redis.host | default (include "openmoodle.redisHost" .) }}';
+    $CFG->redis_cache_port = {{ .Values.cache.redis.port | default 6379 }};
+    $CFG->redis_cache_database = {{ .Values.cache.redis.database | default 1 }};
+    $CFG->redis_cache_ttl = {{ .Values.cache.redis.ttl | default 120 }};
+    {{- if .Values.redis.auth.enabled }}
+    $CFG->redis_cache_auth = getenv('REDIS_PASSWORD');
+    {{- end }}
+    {{- end }}
+    {{- if .Values.fileStorage.enabled }}
+    $CFG->alternative_file_system_class = 's3';
+    $CFG->s3_host = '{{ .Values.fileStorage.s3.host }}';
+    $CFG->s3_bucket = '{{ .Values.fileStorage.s3.bucket }}';
+    $CFG->s3_region = '{{ .Values.fileStorage.s3.region }}';
+    $CFG->s3_use_ssl = {{ .Values.fileStorage.s3.useSSL }};
+    $CFG->s3_key = getenv('S3_ACCESS_KEY');
+    $CFG->s3_secret = getenv('S3_SECRET_KEY');
+    $CFG->s3_public_bucket = true;
+    $CFG->s3_get_object_integrity = false;
+    $CFG->file_system_cache_expire = 3600;
+    {{- end }}
+    $CFG->admins = 'admin';
+    $CFG->directorypermissions = 0755;
     require_once(__DIR__ . '/lib/setup.php');

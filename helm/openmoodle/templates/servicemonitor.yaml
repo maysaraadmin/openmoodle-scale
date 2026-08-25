@@ -6,7 +6,8 @@ metadata:
   labels: {{- include "openmoodle.labels" . | nindent 4 }}
 spec:
   selector:
-    matchLabels: {{- include "openmoodle.labels" . | nindent 6 }}
+    matchLabels:
+      app.kubernetes.io/name: {{ include "openmoodle.name" . }}
   endpoints:
     - port: http
       interval: {{ .Values.monitoring.serviceMonitor.interval }}

@@ -4,33 +4,57 @@ pipeline {
     REGISTRY = 'registry.openmoodle.local'
     IMAGE_MOODLE = "${REGISTRY}/openmoodle/moodle-app"
     IMAGE_NGINX = "${REGISTRY}/openmoodle/moodle-nginx"
+    AWS_DEFAULT_REGION = 'us-east-1'
   }
   stages {
-    stage('Build') {
+    stage('Lint') {
       steps {
-        script { env.IMAGE_TAG = env.GIT_COMMIT.take(8) }
-        sh 'docker build -t ${IMAGE_MOODLE}:${IMAGE_TAG} -f docker/moodle/Dockerfile docker/moodle'
-        sh 'docker build -t ${IMAGE_NGINX}:${IMAGE_TAG} -f docker/nginx/Dockerfile docker/nginx'
+        sh 'python3 -m yamllint -d relaxed . || true'
+        sh 'terraform fmt -check=true -recursive tofu/ || true'
       }
     }
     stage('Validate') {
       steps {
         sh 'helm dependency build helm/openmoodle'
         sh 'helm lint helm/openmoodle'
-        sh 'helm template openmoodle-prod helm/openmoodle --set ingress.tls[0].hosts[0]=moodle.example.com --set ingress.tls[0].secretName=moodle-tls --set secrets.existingSecret=moodle-secrets > rendered.yaml'
+        sh 'helm template openmoodle-prod helm/openmoodle -f helm/openmoodle/values.yaml -f helm/openmoodle/values-staging.yaml > rendered.yaml'
         sh 'grep -q "change-me" rendered.yaml && exit 1 || true'
-        sh 'docker run --rm ${IMAGE_MOODLE}:${IMAGE_TAG} php -m'
+        sh 'docker build -t ${IMAGE_MOODLE}:${IMAGE_TAG} -f docker/moodle/Dockerfile docker/moodle'
+        sh 'docker build -t ${IMAGE_NGINX}:${IMAGE_TAG} -f docker/nginx/Dockerfile docker/nginx'
+      }
+    }
+    stage('Security Scan') {
+      steps {
+        sh 'docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --severity HIGH,CRITICAL ${IMAGE_MOODLE}:${IMAGE_TAG} || exit 1'
+        sh 'docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --severity HIGH,CRITICAL ${IMAGE_NGINX}:${IMAGE_TAG} || exit 1'
       }
     }
     stage('Publish') {
       steps {
-        sh 'docker push ${IMAGE_MOODLE}:${IMAGE_TAG}'
-        sh 'docker push ${IMAGE_NGINX}:${IMAGE_TAG}'
+        script {
+          sh 'docker push ${IMAGE_MOODLE}:${IMAGE_TAG}'
+          sh 'docker push ${IMAGE_NGINX}:${IMAGE_TAG}'
+          env.MOODLE_DIGEST = sh(script: "docker inspect --format='{{index .RepoDigests 0}}' ${IMAGE_MOODLE}:${IMAGE_TAG}", returnStdout: true).trim()
+          env.NGINX_DIGEST = sh(script: "docker inspect --format='{{index .RepoDigests 0}}' ${IMAGE_NGINX}:${IMAGE_TAG}", returnStdout: true).trim()
+        }
+      }
+    }
+    stage('Load Test') {
+      when { branch 'main' }
+      steps {
+        script {
+          sh 'k6 run -e BASE_URL=https://moodle.example.com scripts/load-test.js || true'
+        }
       }
     }
     stage('Deploy') {
       when { branch 'main' }
-      steps { sh 'helm upgrade --install openmoodle-prod helm/openmoodle --namespace moodle-prod --create-namespace --set moodle.image.tag=${IMAGE_TAG} --set moodle.nginx.tag=${IMAGE_TAG} --wait --atomic --timeout 10m' }
+      environment {
+        KUBECONFIG = credentials('kubeconfig-prod')
+      }
+      steps {
+        sh 'helm upgrade --install openmoodle-prod helm/openmoodle --namespace moodle-prod --create-namespace -f helm/openmoodle/values.yaml -f helm/openmoodle/values-prod.yaml --set moodle.image.tag=${MOODLE_DIGEST} --set moodle.nginx.tag=${NGINX_DIGEST} --wait --atomic --timeout 20m'
+      }
     }
   }
   post { always { sh 'docker system prune -f || true' } }

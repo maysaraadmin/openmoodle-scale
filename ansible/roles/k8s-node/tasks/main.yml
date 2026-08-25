@@ -1,0 +1,83 @@
+---
+- name: Prepare OpenMoodleScale Kubernetes nodes
+  hosts: all
+  become: true
+  vars:
+    k8s_version: "1.30"
+    pod_network_cidr: "10.244.0.0/16"
+    sysctl_params:
+      net.bridge.bridge-nf-call-iptables: 1
+      net.bridge.bridge-nf-call-ip6tables: 1
+      net.ipv4.ip_forward: 1
+      vm.overcommit_memory: 1
+      vm.swappiness: 10
+  tasks:
+    - name: Wait for SSH to become available
+      ansible.builtin.wait_for_connection:
+        timeout: 120
+
+    - name: Install node packages
+      ansible.builtin.apt:
+        name: [ca-certificates, curl, gnupg, jq, nfs-common, containerd]
+        state: present
+        update_cache: true
+
+    - name: Disable swap
+      ansible.builtin.command: swapoff -a
+      changed_when: false
+      register: swapoff_result
+      failed_when: false
+
+    - name: Persist swap disabled in fstab
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        regexp: '^[^#].*swap'
+        line: '# \0'
+        state: present
+
+    - name: Apply kernel parameters
+      ansible.posix.sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: true
+      loop: "{{ sysctl_params | dict2items }}"
+
+    - name: Ensure containerd is started
+      ansible.builtin.service:
+        name: containerd
+        state: started
+        enabled: true
+
+    - name: Add Kubernetes apt repository key
+      ansible.builtin.get_url:
+        url: https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/deb/Release.key
+        dest: /etc/apt/keyrings/kubernetes-archive-keyring.gpg
+        mode: '0644'
+
+    - name: Add Kubernetes apt repository
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-archive-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/deb/ /"
+        filename: kubernetes
+        state: present
+
+    - name: Install Kubernetes packages
+      ansible.builtin.apt:
+        name: [kubelet, kubeadm, kubectl]
+        state: present
+        update_cache: true
+
+    - name: Hold Kubernetes packages
+      ansible.builtin.command: apt-mark hold kubelet kubeadm kubectl
+
+    - name: Configure crictl to use containerd
+      ansible.builtin.copy:
+        content: |
+          runtime-endpoint: unix:///var/run/containerd/containerd.sock
+        dest: /etc/crictl.yaml
+        mode: '0644'
+
+    - name: Pull Kubernetes images
+      ansible.builtin.command: kubeadm config images pull --cri-socket unix:///var/run/containerd/containerd.sock
+      environment:
+        KUBERNETES_VERSION: "v{{ k8s_version }}.0"

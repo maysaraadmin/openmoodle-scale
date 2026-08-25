@@ -11,3 +11,43 @@ groups:
         for: 5m
         labels: { severity: critical }
         annotations: { summary: Moodle pods are restarting }
+      - alert: MoodleHighMemoryUsage
+        expr: (container_memory_working_set_bytes{container="moodle-app"} / container_spec_memory_limit_bytes{container="moodle-app"}) > 0.9
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: Moodle app memory usage is above 90% }
+      - alert: MoodleHPAMaxedOut
+        expr: kube_horizontalpodautoscaler_status_current_replicas{horizontalpodautoscaler="openmoodle"} == kube_horizontalpodautoscaler_spec_max_replicas{horizontalpodautoscaler="openmoodle"}
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: HPA has maxed out replicas }
+      - alert: MoodlePodPending
+        expr: kube_pod_status_phase{phase="Pending", namespace=~"openmoodle.*"} > 0
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: Pods are stuck in Pending state }
+      - alert: MoodlePVCUsageHigh
+        expr: (kubelet_volume_stats_used_bytes{namespace=~"openmoodle.*"} / kubelet_volume_stats_capacity_bytes{namespace=~"openmoodle.*"}) > 0.85
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: PVC usage is above 85% }
+      - alert: MoodleDBCritical
+        expr: mysql_global_status_threads_connected{job=~".*mariadb.*"} > 150
+        for: 5m
+        labels: { severity: critical }
+        annotations: { summary: MariaDB connection count is critically high }
+      - alert: MoodleRedisDown
+        expr: up{job=~".*redis.*"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations: { summary: Redis is down }
+      - alert: MoodleCertExpirySoon
+        expr: (certmanager_certificate_expiration_timestamp_seconds - time()) < 604800
+        for: 1h
+        labels: { severity: warning }
+        annotations: { summary: TLS certificate expires within 7 days }
+      - alert: MoodleNginxUpstreamErrors
+        expr: sum(rate(nginx_http_upstream_status{status=~"5.."}[5m])) > 0
+        for: 5m
+        labels: { severity: critical }
+        annotations: { summary: Nginx is receiving upstream 5xx errors }

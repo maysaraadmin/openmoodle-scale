@@ -4,6 +4,15 @@ description: Scalable open-source Moodle deployment
 type: application
 version: 1.0.0
 appVersion: "4.4"
+keywords:
+  - moodle
+  - lms
+  - education
+  - kubernetes
+maintainers:
+  - name: OpenMoodleScale
+sources:
+  - https://github.com/moodle/moodle
 dependencies:
   - name: redis-cluster
     version: 9.0.0

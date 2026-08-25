@@ -1,0 +1,83 @@
+{{- if and .Values.initJob.enabled .Values.mariadb.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "openmoodle.fullname" . }}-init
+  labels: {{- include "openmoodle.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: Never
+      securityContext: { seccompProfile: { type: RuntimeDefault } }
+      initContainers:
+        - name: wait-for-db
+          image: "{{ .Values.global.imageRegistry }}/{{ .Values.moodle.image.repository }}:{{ .Values.moodle.image.tag }}"
+          imagePullPolicy: {{ .Values.moodle.image.pullPolicy }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 33
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+            readOnlyRootFilesystem: true
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Waiting for database at {{ include "openmoodle.databaseHost" . }}..."
+              for i in $(seq 1 60); do
+                if php -r 'new PDO("mysql:host={{ include "openmoodle.databaseHost" . }}","{{ .Values.database.user }}",getenv("DB_PASSWORD"),"{{ .Values.database.name }}");' 2>/dev/null; then
+                  echo "Database is ready."
+                  exit 0
+                fi
+                echo "Retrying in 2s... ($i/60)"
+                sleep 2
+              done
+              echo "Database not ready after 120s, failing."
+              exit 1
+          env:
+            - { name: DB_PASSWORD, valueFrom: { secretKeyRef: { name: {{ include "openmoodle.secretName" . }}, key: database-password } } }
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          volumeMounts:
+            - { name: config, mountPath: /var/www/html/config.php, subPath: config.php, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
+      containers:
+        - name: moodle-upgrade
+          image: "{{ .Values.global.imageRegistry }}/{{ .Values.moodle.image.repository }}:{{ .Values.moodle.image.tag }}"
+          imagePullPolicy: {{ .Values.moodle.image.pullPolicy }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 33
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+            readOnlyRootFilesystem: true
+          command: [php, /var/www/html/admin/cli/upgrade.php, --non-interactive]
+          env:
+            - { name: DB_HOST, value: {{ include "openmoodle.databaseHost" . | quote }} }
+            - { name: DB_NAME, value: {{ .Values.database.name | quote }} }
+            - { name: DB_USER, value: {{ .Values.database.user | quote }} }
+            - name: DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ include "openmoodle.secretName" . }}, key: database-password } }
+            - name: DB_PASS
+              valueFrom: { secretKeyRef: { name: {{ include "openmoodle.secretName" . }}, key: database-password } }
+            - name: REDIS_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ include "openmoodle.secretName" . }}, key: redis-password } }
+          volumeMounts:
+            - { name: moodledata, mountPath: /var/moodledata }
+            - { name: config, mountPath: /var/www/html/config.php, subPath: config.php, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
+          resources: {{- toYaml .Values.moodle.resources | nindent 12 }}
+      volumes:
+        - name: moodledata
+          persistentVolumeClaim: { claimName: {{ include "openmoodle.fullname" . }}-moodledata }
+        - name: config
+          configMap: { name: {{ include("openmoodle.fullname", .) }}-config }
+          readOnly: true
+        - name: tmp
+          emptyDir: {}
+{{- end }}

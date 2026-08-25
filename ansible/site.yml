@@ -1,32 +1,127 @@
 ---
-- name: Prepare OpenMoodleScale Kubernetes nodes
+- name: Harden all nodes
   hosts: all
   become: true
+  roles:
+    - role: hardening
+
+- name: Bootstrap Kubernetes control plane
+  hosts: k8s_master
+  become: true
   vars:
-    sysctl_params:
-      net.bridge.bridge-nf-call-iptables: 1
-      net.bridge.bridge-nf-call-ip6tables: 1
-      net.ipv4.ip_forward: 1
-      vm.overcommit_memory: 1
-      vm.swappiness: 10
+    k8s_version: "1.30"
+    pod_network_cidr: "10.244.0.0/16"
   tasks:
-    - name: Install node packages
+    - name: Wait for SSH
+      ansible.builtin.wait_for_connection:
+        timeout: 120
+
+    - name: Install Kubernetes apt key
+      ansible.builtin.get_url:
+        url: https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/deb/Release.key
+        dest: /etc/apt/keyrings/kubernetes-archive-keyring.gpg
+        mode: '0644'
+
+    - name: Add Kubernetes apt repo
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-archive-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/deb/ /"
+        filename: kubernetes
+        state: present
+
+    - name: Install kubeadm, kubelet, kubectl
       ansible.builtin.apt:
-        name: [ca-certificates, curl, gnupg, jq, nfs-common, containerd]
+        name: [kubelet, kubeadm, kubectl]
         state: present
         update_cache: true
-    - name: Disable swap
-      ansible.builtin.command: swapoff -a
+
+    - name: Hold k8s packages
+      ansible.builtin.command: apt-mark hold kubelet kubeadm kubectl
+
+    - name: Configure crictl
+      ansible.builtin.copy:
+        content: |
+          runtime-endpoint: unix:///var/run/containerd/containerd.sock
+        dest: /etc/crictl.yaml
+        mode: '0644'
+
+    - name: Pull k8s images
+      ansible.builtin.command: kubeadm config images pull --cri-socket unix:///var/run/containerd/containerd.sock
+      environment:
+        KUBERNETES_VERSION: "v{{ k8s_version }}.0"
+
+    - name: Initialize Kubernetes cluster
+      ansible.builtin.command: >
+        kubeadm init
+        --pod-network-cidr={{ pod_network_cidr }}
+        --cri-socket unix:///var/run/containerd/containerd.sock
+        --upload-certs
+      register: kubeadm_init
+      changed_when: kubeadm_init.rc == 0
+      failed_when: kubeadm_init.rc != 0 and 'This kubeadm run is not idempotent' not in kubeadm_init.stderr
+
+    - name: Create .kube directory
+      ansible.builtin.file:
+        path: /home/ubuntu/.kube
+        state: directory
+        mode: '0700'
+        owner: ubuntu
+        group: ubuntu
+
+    - name: Copy admin.conf to ubuntu .kube
+      ansible.builtin.copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /home/ubuntu/.kube/config
+        remote_src: true
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+    - name: Install Flannel CNI
+      ansible.builtin.command: >
+        kubectl --kubeconfig /etc/kubernetes/admin.conf
+        apply -f https://raw.githubusercontent.com/flannel-io/flannel/master/Documentation/kube-flannel.yml
+      register: flannel_install
+      changed_when: "'created' in flannel_install.stdout or 'configured' in flannel_install.stdout"
+
+    - name: Generate join command
+      ansible.builtin.command: kubeadm token create --print-join-command
+      register: kubeadm_join
       changed_when: false
-    - name: Apply kernel parameters
-      ansible.posix.sysctl:
-        name: "{{ item.key }}"
-        value: "{{ item.value }}"
+
+    - name: Save join command to file
+      ansible.builtin.copy:
+        content: "{{ kubeadm_join.stdout }}"
+        dest: /tmp/kubeadm-join-command.sh
+        mode: '0700'
+
+    - name: Wait for nodes to be ready
+      ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf wait --for=condition=Ready node --all --timeout=300s
+      register: wait_nodes
+      failed_when: false
+      changed_when: false
+
+- name: Join worker nodes
+  hosts: k8s_worker
+  become: true
+  tasks:
+    - name: Wait for SSH
+      ansible.builtin.wait_for_connection:
+        timeout: 120
+
+    - name: Wait for join command on master
+      ansible.builtin.wait_for:
+        path: /tmp/kubeadm-join-command.sh
+        host: "{{ hostvars[groups['k8s_master'][0]].ansible_host }}"
         state: present
-        reload: true
-      loop: "{{ sysctl_params | dict2items }}"
-    - name: Enable containerd
-      ansible.builtin.service:
-        name: containerd
-        state: started
-        enabled: true
+        timeout: 300
+        delay: 10
+
+    - name: Fetch join command from master
+      ansible.builtin.slurp:
+        src: /tmp/kubeadm-join-command.sh
+        delegate_to: "{{ hostvars[groups['k8s_master'][0]].ansible_host }}"
+      register: join_command
+
+    - name: Join cluster
+      ansible.builtin.command: "{{ join_command.content | b64decode }}"
+      changed_when: true

@@ -1,0 +1,33 @@
+repos:
+  - repo: https://github.com/ansible/ansible-lint
+    rev: v24.5.0
+    hooks:
+      - id: ansible-lint
+  - repo: https://github.com/detailyang/helm-lint
+    rev: v0.1.0
+    hooks:
+      - id: helm-lint
+  - repo: https://github.com/terraform-linters/tflint
+    rev: v0.50.3
+    hooks:
+      - id: tflint
+  - repo: https://github.com/hashcorp/terraform-ls
+    rev: v0.35.0
+    hooks:
+      - id: terraform-validate
+  - repo: https://github.com/detailyang/helm-docs
+    rev: v0.1.0
+    hooks:
+      - id: helm-docs
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.33.0
+    hooks:
+      - id: yamllint
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: 0.9.0
+    hooks:
+      - id: shellcheck
+  - repo: https://github.com/aquasecurity/trivy
+    rev: 0.45.1
+    hooks:
+      - id: trivy

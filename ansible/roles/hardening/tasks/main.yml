@@ -1,7 +1,80 @@
 ---
-- name: Ensure SSH root login is disabled
-  ansible.builtin.lineinfile:
-    path: /etc/ssh/sshd_config
-    regexp: '^#?PermitRootLogin'
-    line: PermitRootLogin no
-    validate: sshd -t -f %s
+- name: Harden Ubuntu nodes
+  hosts: all
+  become: true
+  vars:
+    ssh_port: 22
+    allowed_ssh_users: [ubuntu]
+    ufw_rules:
+      - { port: '22', proto: tcp, rule: allow, comment: 'SSH' }
+      - { port: '6443', proto: tcp, rule: allow, comment: 'Kubernetes API' }
+      - { port: '10250', proto: tcp, rule: allow, comment: 'Kubelet' }
+  tasks:
+    - name: Disable password authentication
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PasswordAuthentication'
+        line: 'PasswordAuthentication no'
+        validate: sshd -t -f %s
+
+    - name: Disable root SSH login
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PermitRootLogin'
+        line: 'PermitRootLogin no'
+        validate: sshd -t -f %s
+
+    - name: Restart sshd
+      ansible.builtin.service:
+        name: sshd
+        state: restarted
+
+    - name: Install unattended-upgrades
+      ansible.builtin.apt:
+        name: unattended-upgrades
+        state: present
+
+    - name: Enable automatic security updates
+      ansible.builtin.copy:
+        content: |
+          APT::Periodic::Update-Package-Lists "1";
+          APT::Periodic::Download-Upgradeable-Packages "1";
+          APT::Periodic::AutocleanInterval "7";
+          APT::Periodic::Unattended-Upgrade "1";
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        mode: '0644'
+
+    - name: Install UFW
+      ansible.builtin.apt:
+        name: ufw
+        state: present
+
+    - name: Configure UFW defaults
+      ansible.builtin.ufw:
+        direction: incoming
+        policy: deny
+
+    - name: Allow SSH through UFW
+      ansible.builtin.ufw:
+        rule: allow
+        port: '{{ ssh_port }}'
+        proto: tcp
+        comment: SSH
+
+    - name: Allow Kubernetes API through UFW
+      ansible.builtin.ufw:
+        rule: allow
+        port: '6443'
+        proto: tcp
+        comment: 'Kubernetes API'
+
+    - name: Allow kubelet through UFW
+      ansible.builtin.ufw:
+        rule: allow
+        port: '10250'
+        proto: tcp
+        comment: Kubelet
+
+    - name: Enable UFW
+      ansible.builtin.ufw:
+        state: enabled
