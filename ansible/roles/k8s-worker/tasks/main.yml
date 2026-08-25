@@ -1,0 +1,5 @@
+---
+- name: Install Kubernetes worker packages
+  ansible.builtin.apt:
+    name: [kubeadm, kubelet]
+    state: present

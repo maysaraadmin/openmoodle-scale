@@ -32,3 +32,6 @@ ingress:
   tls: []
 cron: { enabled: true, schedule: "*/5 * * * *" }
 varnish: { enabled: false, replicaCount: 2, cacheSize: 2G }
+monitoring:
+  enabled: false
+  serviceMonitor: { enabled: false, interval: 30s }
