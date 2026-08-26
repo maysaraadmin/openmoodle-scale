@@ -61,8 +61,14 @@ spec:
 
               echo "Backup created at ${BACKUP_DIR}.tar.gz"
 
-              {{- if .Values.backup.minio.enabled }}
-              echo "MinIO upload requires mc client; use manual backup scripts for offsite storage or configure an external sync job."
+              {{- if .Values.backup.encryption.enabled }}
+              if command -v gpg >/dev/null 2>&1; then
+                gpg --batch --yes --symmetric --cipher-algo AES256 --passphrase "$(BACKUP_ENCRYPTION_KEY)" "${BACKUP_DIR}.tar.gz"
+                rm -f "${BACKUP_DIR}.tar.gz"
+                echo "Backup encrypted with AES-256"
+              else
+                echo "WARNING: gpg not available in backup container; backup is NOT encrypted. Install gpg or use manual backup scripts for encrypted backups."
+              fi
               {{- end }}
 
               {{- if .Values.backup.retention.enabled }}
@@ -74,11 +80,9 @@ spec:
               value: {{ .Values.database.user | quote }}
             - name: DB_NAME
               value: {{ .Values.database.name | quote }}
-            {{- if .Values.backup.minio.enabled }}
-            - name: MINIO_ACCESS_KEY
-              valueFrom: { secretKeyRef: { name: {{ include "openmoodle.secretName" . }}, key: minio-access-key } }
-            - name: MINIO_SECRET_KEY
-              valueFrom: { secretKeyRef: { name: {{ include "openmoodle.secretName" . }}, key: minio-secret-key } }
+            {{- if .Values.backup.encryption.enabled }}
+            - name: BACKUP_ENCRYPTION_KEY
+              valueFrom: { secretKeyRef: { name: {{ include "openmoodle.secretName" . }}, key: backup-encryption-key } }
             {{- end }}
           volumeMounts:
             - { name: tmp, mountPath: /tmp }

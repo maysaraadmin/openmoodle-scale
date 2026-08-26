@@ -1,0 +1,26 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-host-path
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: host-path
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: "HostPath mounts are not allowed."
+        pattern:
+          spec:
+            containers:
+              - volumeMounts:
+                  - mountPath: "=/var/*"
+                    readOnly: "true"
+                    source: "emptyDir"
+              volumes:
+                - name: "*"
+                  emptyDir: {}

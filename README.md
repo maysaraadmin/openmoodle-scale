@@ -391,6 +391,59 @@ tofu init -migrate-state
 
 For high-traffic deployments, consider adding a connection pooler like ProxySQL or MaxScale between Moodle and MariaDB to reduce connection overhead during traffic spikes.
 
+## PodDisruptionBudgets
+
+PDBs are configured for all stateful components to ensure availability during cluster maintenance:
+
+- **Moodle app** — minAvailable: max(1, replicas - 1)
+- **MariaDB primary** — minAvailable: 1 (replicas cannot be drained below 1)
+- **MariaDB secondary** — minAvailable: 1
+- **Redis** — minAvailable: 1
+
+This prevents voluntary disruptions from taking down critical stateful pods.
+
+## Pod Anti-Affinity
+
+Stateful components are configured with pod anti-affinity to spread across separate nodes:
+
+- MariaDB primary pods avoid scheduling on the same node
+- Redis pods avoid scheduling on the same node
+- This improves availability during node failures
+
+## Security Policies with Kyverno
+
+Kyverno policies are provided in `policies/kyverno/` to enforce security guardrails:
+
+- **disallow-privileged-containers** — No privileged containers allowed
+- **require-run-as-non-root** — All containers must run as non-root
+- **require-read-only-root-filesystem** — Root filesystem must be read-only
+- **disallow-host-path** — HostPath mounts are blocked
+- **require-resource-limits** — CPU and memory limits are mandatory
+
+Install policies:
+```bash
+kubectl apply -f policies/kyverno/
+```
+
+Policies run in `Enforce` mode, blocking non-compliant pods at admission time.
+
+## Encrypted Backups
+
+Enable backup encryption in production to protect data at rest:
+
+```yaml
+backup:
+  encryption:
+    enabled: true
+```
+
+Set the encryption key via Helm values or an external secret:
+```bash
+helm upgrade ... --set secrets.backupEncryptionKey="your-strong-passphrase"
+```
+
+Backups are encrypted with AES-256 using GPG symmetric encryption before retention cleanup.
+
 ## CI/CD Pipeline
 
 The Jenkins pipeline includes:
