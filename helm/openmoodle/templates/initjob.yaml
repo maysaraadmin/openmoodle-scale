@@ -9,14 +9,18 @@ metadata:
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   backoffLimit: 3
-  template:
-    spec:
-      restartPolicy: Never
-      securityContext:
-        seccompProfile: { type: RuntimeDefault }
-        runAsNonRoot: true
-        fsGroup: 1000
-      initContainers:
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext:
+            seccompProfile: { type: RuntimeDefault }
+            runAsNonRoot: true
+            fsGroup: 1000
+          {{- if .Values.moodle.nodeSelector }}
+          nodeSelector:
+            {{- toYaml .Values.moodle.nodeSelector | nindent 12 }}
+          {{- end }}
+          initContainers:
 {{- include "openmoodle.initContainers" . | nindent 6 }}
       containers:
         - name: moodle-upgrade

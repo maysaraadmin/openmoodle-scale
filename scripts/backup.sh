@@ -3,7 +3,7 @@ set -euo pipefail
 
 BACKUP_DIR="${BACKUP_DIR:-/backup/openmoodle-$(date +%Y%m%d-%H%M%S)}"
 NAMESPACE="${MOODLE_NAMESPACE:-moodle-prod}"
-DB_POD="${DB_POD:?Set DB_POD to the MariaDB primary pod}"
+DB_POD="${DB_POD:?Set DB_POD to the PostgreSQL primary pod}"
 APP_POD="${APP_POD:?Set APP_POD to a Moodle app pod}"
 SECRET_NAME="${SECRET_NAME:-}"
 DB_PASSWORD="${DB_PASSWORD:?Set DB_PASSWORD env var}"

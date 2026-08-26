@@ -25,16 +25,14 @@ spec:
     {{- if .Values.fileStorage.enabled }}
     - to:
         - ipBlock:
-            # Restrict to AWS S3 CIDR; override or use CNI FQDN rules for other providers
-            cidr: 52.216.0.0/15
+            cidr: {{ .Values.networkPolicy.s3Cidr | default "52.216.0.0/15" }}
       ports:
         - { protocol: TCP, port: 443 }
     {{- end }}
     {{- if and .Values.backup.enabled .Values.backup.minio.enabled }}
     - to:
         - ipBlock:
-            # Restrict to AWS S3 CIDR; override or use CNI FQDN rules for other providers
-            cidr: 52.216.0.0/15
+            cidr: {{ .Values.networkPolicy.s3Cidr | default "52.216.0.0/15" }}
       ports:
         - { protocol: TCP, port: 443 }
     {{- end }}

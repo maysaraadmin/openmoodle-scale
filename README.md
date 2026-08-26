@@ -122,7 +122,7 @@ Create environment-specific overrides and keep them out of version control:
 Before deploying to production, configure:
 
 1. **Registry** — Set `global.imageRegistry` to your private registry.
-2. **TLS** — Set `ingress.tls` with valid hosts and secretName, or use cert-manager.
+2. **TLS** — Set `ingress.tls` with valid hosts and secretName, or use cert-manager. If enabling HSTS `preload`, verify eligibility at https://hstspreload.org first (valid certificate, HTTP-to-HTTPS redirect, no mixed content, etc.).
 3. **Secrets** — Either set `secrets.existingSecret` to a pre-created secret, or set `secrets.create=true` and provide non-empty passwords.
 4. **Database** — Set `database.host` to the PostgreSQL service name if using an external DB.
 5. **Redis auth** — Set `redis.auth.password` and `secrets.redisPassword`.

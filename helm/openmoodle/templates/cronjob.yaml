@@ -18,6 +18,10 @@ spec:
             seccompProfile: { type: RuntimeDefault }
             runAsNonRoot: true
             fsGroup: 33
+          {{- if .Values.moodle.nodeSelector }}
+          nodeSelector:
+            {{- toYaml .Values.moodle.nodeSelector | nindent 12 }}
+          {{- end }}
           containers:
             - name: moodle-cron
               image: "{{ .Values.global.imageRegistry }}/{{ .Values.moodle.image.repository }}:{{ .Values.moodle.image.tag }}"

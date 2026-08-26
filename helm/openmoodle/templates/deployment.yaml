@@ -15,9 +15,14 @@ spec:
         app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
     spec:
       terminationGracePeriodSeconds: {{ .Values.podManagement.terminationGracePeriodSeconds | default 60 }}
+      priorityClassName: {{ .Values.moodle.priorityClassName | default "production-critical" }}
       securityContext:
         seccompProfile: { type: RuntimeDefault }
         fsGroup: 33
+      {{- if .Values.moodle.nodeSelector }}
+      nodeSelector:
+        {{- toYaml .Values.moodle.nodeSelector | nindent 8 }}
+      {{- end }}
       {{- if .Values.moodle.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml .Values.moodle.imagePullSecrets | nindent 8 }}
@@ -27,7 +32,7 @@ spec:
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
-          whenUnsatisfiable: DoNotSchedule
+          whenUnsatisfiable: ScheduleAnyway
           labelSelector:
             matchLabels:
               app.kubernetes.io/name: {{ include "openmoodle.name" . }}
@@ -47,6 +52,8 @@ spec:
 {{- include "openmoodle.webContainer" . | nindent 6 }}
 {{- if .Values.monitoring.enabled }}
         - name: nginx-exporter
+          # Pin with SHA256 digest for reproducible builds, e.g.:
+          # image: "nginx/nginx-prometheus-exporter:1.1.0@sha256:..."
           image: "nginx/nginx-prometheus-exporter:1.1.0"
           imagePullPolicy: IfNotPresent
           args:

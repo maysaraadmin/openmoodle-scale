@@ -7,6 +7,9 @@ moodle:
   image: { repository: openmoodle/moodle-app, tag: "4.4.0", pullPolicy: IfNotPresent }
   nginx: { repository: openmoodle/moodle-nginx, tag: "4.4.0", pullPolicy: IfNotPresent }
   imagePullSecrets: []
+  nodeSelector:
+    kubernetes.io/role: worker
+  priorityClassName: production-critical
   resources:
     requests: { cpu: 500m, memory: 1Gi }
     limits: { cpu: 2000m, memory: 4Gi }
@@ -140,6 +143,7 @@ monitoring:
 
 networkPolicy:
   enabled: true
+  s3Cidr: "52.216.0.0/15"
   ingressNamespaceSelector:
     kubernetes.io/metadata.name: ingress-nginx
 

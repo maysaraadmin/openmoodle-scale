@@ -23,21 +23,22 @@ data:
       mkdir -p /tmp/bin /tmp/gnupg
       export PATH="/tmp/bin:$PATH"
       if [ "$MINIO_UPLOAD" = "true" ] && ! command -v mc >/dev/null 2>&1; then
-        curl -fsSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /tmp/bin/mc && chmod +x /tmp/bin/mc || true
+        curl -fSL --proto =https --tlsv1.2 https://dl.min.io/client/mc/release/linux-amd64/mc -o /tmp/bin/mc && chmod +x /tmp/bin/mc || true
       fi
       if [ "$ENCRYPT_BACKUP" = "true" ] && ! command -v gpg >/dev/null 2>&1; then
-        ( apt-get download gnupg >/dev/null 2>&1 || true
-          for d in gnupg*.deb; do [ -f "$d" ] && dpkg-deb -x "$d" /tmp/gnupg && rm -f "$d"; done
-          true )
-        export PATH="/tmp/gnupg/usr/bin:$PATH"
-        export LD_LIBRARY_PATH="/tmp/gnupg/usr/lib:/tmp/gnupg/usr/lib/x86_64-linux-gnu${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        if command -v apt-get >/dev/null 2>&1; then
+          apt-get update >/dev/null 2>&1 || true
+          apt-get install -y --no-install-recommends gnupg >/dev/null 2>&1 || true
+        elif command -v apk >/dev/null 2>&1; then
+          apk add --no-cache gnupg >/dev/null 2>&1 || true
+        fi
       fi
     }
     ensure_tools
 
     DB_POD=$(kubectl get pod -n "$NAMESPACE" -l app.kubernetes.io/name=postgresql -o jsonpath='{.items[0].metadata.name}')
     APP_POD=$(kubectl get pod -n "$NAMESPACE" -l app.kubernetes.io/name={{ include "openmoodle.name" . }} -o jsonpath='{.items[0].metadata.name}')
-    DB_PASSWORD=$(kubectl get secret -n "$NAMESPACE" "$SECRET_NAME" -o jsonpath="{%.data.${SECRET_KEY}%" | base64 -d)
+    DB_PASSWORD=$(kubectl get secret -n "$NAMESPACE" "$SECRET_NAME" -o jsonpath="{.data.${SECRET_KEY}}" | base64 -d)
 
     enable_maintenance() {
       if [ "$MAINTENANCE_MODE" = "true" ]; then

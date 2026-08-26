@@ -128,8 +128,12 @@ spec:
           hostPath:
             path: /var/log/dmesg
       tolerations:
+        {{- if .Values.fluentBit.tolerateAllTaints }}
         - operator: Exists
-        # Tolerates all taints including control-plane. Remove or scope to worker nodes if master logging is not required.
+        {{- else }}
+        - operator: Exists
+          # Tolerates all taints including control-plane. Set tolerateAllTaints=true to enable.
+        {{- end }}
 
 ---
 apiVersion: v1
