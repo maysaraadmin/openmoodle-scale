@@ -7,7 +7,7 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: ["pods", "configmaps", "secrets"]
-    verbs: ["get", "list", "create", "delete"]
+    verbs: ["get", "list"]
   - apiGroups: [""]
     resources: ["pods/exec"]
     verbs: ["get", "create"]

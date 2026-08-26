@@ -12,6 +12,7 @@ spec:
     metadata:
       labels:
         {{- include "openmoodle.labels" . | nindent 8 }}
+        app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
     spec:
       terminationGracePeriodSeconds: {{ .Values.podManagement.terminationGracePeriodSeconds | default 60 }}
       securityContext:
@@ -26,14 +27,42 @@ spec:
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
-          whenUnsatisfiable: ScheduleAnyway
+          whenUnsatisfiable: DoNotSchedule
           labelSelector:
             matchLabels:
               app.kubernetes.io/name: {{ include "openmoodle.name" . }}
               app.kubernetes.io/instance: {{ .Release.Name }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: {{ include "openmoodle.name" . }}
+                    app.kubernetes.io/instance: {{ .Release.Name }}
       containers:
 {{- include "openmoodle.appContainer" . | nindent 6 }}
 {{- include "openmoodle.webContainer" . | nindent 6 }}
+{{- if .Values.monitoring.enabled }}
+        - name: nginx-exporter
+          image: "nginx/nginx-prometheus-exporter:1.1.0"
+          imagePullPolicy: IfNotPresent
+          args:
+            - -nginx.scrape-uri
+            - http://localhost:8080/stub_status
+          ports: [{ name: metrics, containerPort: 9113 }]
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 101
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+            readOnlyRootFilesystem: true
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 200m, memory: 128Mi }
+{{- end }}
       volumes:
         - name: moodledata
           persistentVolumeClaim: { claimName: {{ include "openmoodle.fullname" . }}-moodledata }

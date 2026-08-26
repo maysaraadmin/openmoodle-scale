@@ -11,11 +11,43 @@ spec:
     spec:
       containers:
         - name: varnish
-          image: varnish:7.4-alpine
-          ports: [{ name: http, containerPort: 80 }]
-          command: [varnishd, -F, -f, /etc/varnish/default.vcl, -s, malloc,{{ .Values.varnish.cacheSize }}]
-          volumeMounts: [{ name: vcl, mountPath: /etc/varnish }]
-      volumes: [{ name: vcl, configMap: { name: {{ include "openmoodle.fullname" . }}-varnish } }]
+          image: varnish:7.4.2-alpine
+          ports: [{ name: http, containerPort: 8080 }]
+          command:
+            - varnishd
+            - -F
+            - -f
+            - /etc/varnish/default.vcl
+            - -s
+            - malloc,{{ .Values.varnish.cacheSize }}
+            - -a
+            - :8080
+            - -T
+            - :6082
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+            readOnlyRootFilesystem: true
+          env:
+            - { name: HOME, value: /tmp }
+          volumeMounts:
+            - { name: vcl, mountPath: /etc/varnish, readOnly: true }
+            - { name: varnish-lib, mountPath: /var/lib/varnish }
+            - { name: tmp, mountPath: /tmp }
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits:
+              cpu: 1000m
+              memory: {{ .Values.varnish.memoryLimit | upper }}
+      volumes:
+        - name: vcl
+          configMap: { name: {{ include "openmoodle.fullname" . }}-varnish }
+        - name: varnish-lib
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: ConfigMap

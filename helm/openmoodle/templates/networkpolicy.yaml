@@ -19,16 +19,23 @@ spec:
     - ports:
         - { protocol: TCP, port: 53 }
         - { protocol: UDP, port: 53 }
-        - { protocol: TCP, port: 3306 }
+        - { protocol: TCP, port: 5432 }
         - { protocol: TCP, port: 6379 }
         - { protocol: TCP, port: 443 }
     {{- if .Values.fileStorage.enabled }}
     - to:
         - ipBlock:
-            cidr: 0.0.0.0/0
+            # Restrict to AWS S3 CIDR; override or use CNI FQDN rules for other providers
+            cidr: 52.216.0.0/15
       ports:
         - { protocol: TCP, port: 443 }
-        - { protocol: TCP, port: 80 }
-        - { protocol: TCP, port: 9000 }
+    {{- end }}
+    {{- if and .Values.backup.enabled .Values.backup.minio.enabled }}
+    - to:
+        - ipBlock:
+            # Restrict to AWS S3 CIDR; override or use CNI FQDN rules for other providers
+            cidr: 52.216.0.0/15
+      ports:
+        - { protocol: TCP, port: 443 }
     {{- end }}
 {{- end }}

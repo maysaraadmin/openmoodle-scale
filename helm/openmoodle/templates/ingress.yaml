@@ -10,6 +10,10 @@ metadata:
     {{- toYaml .Values.ingress.annotations | nindent 4 }}
 spec:
   ingressClassName: {{ .Values.ingress.className }}
+  {{- $backendSvc := include "openmoodle.fullname" . }}
+  {{- if .Values.varnish.enabled }}
+  {{- $backendSvc = printf "%s-varnish" (include "openmoodle.fullname" .) }}
+  {{- end }}
   rules:
     {{- range .Values.ingress.hosts }}
     - host: {{ .host }}
@@ -18,7 +22,7 @@ spec:
           {{- range .paths }}
           - path: {{ .path }}
             pathType: {{ .pathType }}
-            backend: { service: { name: {{ include "openmoodle.fullname" $ }}, port: { number: 80 } } }
+             backend: { service: { name: {{ $backendSvc }}, port: { name: http } } }
           {{- end }}
     {{- end }}
   {{- if not .Values.ingress.tls }}

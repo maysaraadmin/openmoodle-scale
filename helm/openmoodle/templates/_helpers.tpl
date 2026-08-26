@@ -17,7 +17,15 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end -}}
 
 {{- define "openmoodle.databaseHost" -}}
-{{- default (printf "%s-mariadb" .Release.Name) .Values.database.host -}}
+{{- default (printf "%s-postgresql" .Release.Name) .Values.database.host -}}
+{{- end -}}
+
+{{- define "openmoodle.postgresSecretName" -}}
+{{- printf "%s-postgresql" .Release.Name -}}
+{{- end -}}
+
+{{- define "openmoodle.postgresSecretKey" -}}
+password
 {{- end -}}
 
 {{- define "openmoodle.redisHost" -}}
