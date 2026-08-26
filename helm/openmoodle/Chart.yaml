@@ -19,7 +19,7 @@ dependencies:
     repository: https://charts.bitnami.com/bitnami
     condition: redis.enabled
   - name: mariadb
-    version: 15.0.0
+    version: 27.0.7
     repository: https://charts.bitnami.com/bitnami
     condition: mariadb.enabled
   - name: minio
