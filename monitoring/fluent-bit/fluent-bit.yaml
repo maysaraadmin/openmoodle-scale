@@ -129,6 +129,7 @@ spec:
             path: /var/log/dmesg
       tolerations:
         - operator: Exists
+        # Tolerates all taints including control-plane. Remove or scope to worker nodes if master logging is not required.
 
 ---
 apiVersion: v1

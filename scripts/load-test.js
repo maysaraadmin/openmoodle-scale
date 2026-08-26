@@ -15,6 +15,7 @@ export const options = {
     'group_duration{group:::login}': ['p(95)<1500'],
     'group_duration{group:::course}': ['p(95)<2000'],
     'group_duration{group:::static}': ['p(95)<500'],
+    'group_duration{group:::api}': ['p(95)<1000'],
   },
 };
 
@@ -35,7 +36,7 @@ export default function () {
     check(res, {
       'course page loads': (r) => r.status === 200 || r.status === 302,
     });
-    sleep(2);
+    sleep(1);
   });
 
   group('static', () => {
@@ -49,10 +50,10 @@ export default function () {
       const res = http.get(`${baseUrl}${path}`);
       check(res, {
         [`${path} loads`]: (r) => r.status === 200,
-        [`${path} cached`]: (r) => r.headers['Cache-Control'] && r.headers['Cache-Control'].includes('max-age'),
+        [`${path} cached`]: (r) => r.headers['cache-control'] && r.headers['cache-control'].includes('max-age'),
       });
     });
-    sleep(1);
+    sleep(0.5);
   });
 
   group('api', () => {
@@ -60,8 +61,8 @@ export default function () {
     check(res, {
       'api responds': (r) => r.status === 200 || r.status === 403,
     });
-    sleep(0.5);
+    sleep(0.2);
   });
 
-  sleep(Math.random() * 3 + 1);
+  sleep(Math.random() * 1 + 0.5);
 }
