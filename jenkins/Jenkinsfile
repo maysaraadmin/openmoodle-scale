@@ -9,8 +9,8 @@ pipeline {
   stages {
     stage('Lint') {
       steps {
-        sh 'python3 -m yamllint -d relaxed . || true'
-        sh 'terraform fmt -check=true -recursive tofu/ || true'
+        sh 'python3 -m yamllint -d relaxed .'
+        sh 'terraform fmt -check=true -recursive tofu/'
       }
     }
     stage('Validate') {
@@ -18,7 +18,7 @@ pipeline {
         sh 'helm dependency build helm/openmoodle'
         sh 'helm lint helm/openmoodle'
         sh 'helm template openmoodle-prod helm/openmoodle -f helm/openmoodle/values.yaml -f helm/openmoodle/values-staging.yaml > rendered.yaml'
-        sh 'grep -q "change-me" rendered.yaml && exit 1 || true'
+        sh 'grep -q "change-me" rendered.yaml && exit 1'
         sh 'docker build -t ${IMAGE_MOODLE}:${IMAGE_TAG} -f docker/moodle/Dockerfile docker/moodle'
         sh 'docker build -t ${IMAGE_NGINX}:${IMAGE_TAG} -f docker/nginx/Dockerfile docker/nginx'
       }
@@ -54,7 +54,7 @@ pipeline {
       when { branch 'main' }
       steps {
         script {
-          sh 'k6 run -e BASE_URL=https://moodle.example.com scripts/load-test.js || true'
+          sh 'k6 run -e BASE_URL=https://moodle.example.com scripts/load-test.js'
         }
       }
     }
