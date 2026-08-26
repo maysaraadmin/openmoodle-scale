@@ -1,0 +1,48 @@
+{{- if .Values.istio.enabled }}
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: {{ include "openmoodle.fullname" . }}
+  labels: {{- include "openmoodle.labels" . | nindent 4 }}
+spec:
+  hosts:
+    {{- range .Values.ingress.hosts }}
+    - {{ .host }}
+    {{- end }}
+  gateways:
+    - istio-system/ingressgateway
+  http:
+    - route:
+        - destination:
+            host: {{ include "openmoodle.fullname" . }}
+            port:
+              number: 80
+          weight: 100
+      timeout: 300s
+      retries:
+        attempts: 3
+        perTryTimeout: 10s
+        retryOn: 5xx,gateway-error,connect-failure,refused-stream
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: {{ include "openmoodle.fullname" . }}
+  labels: {{- include "openmoodle.labels" . | nindent 4 }}
+spec:
+  host: {{ include "openmoodle.fullname" . }}
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        h1UpgradePolicy: UPGRADE
+        http2MaxRequests: 100
+        maxRequestsPerConnection: 10
+    loadBalancer:
+      simple: LEAST_CONN
+  subsets:
+    - name: v1
+      labels:
+        version: v1
+{{- end }}

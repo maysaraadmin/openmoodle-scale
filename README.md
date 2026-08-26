@@ -303,6 +303,68 @@ ArgoCD Application manifests are provided in `helm/openmoodle/argocd/`. Deploy t
 - Visual deployment history and rollback
 - Promotion workflows between staging and production
 
+## Service Mesh with Istio and Kiali
+
+OpenMoodleScale includes optional Istio service mesh integration for observability, traffic management, and security.
+
+### Installation
+
+Install Istio and Kiali via Ansible:
+
+```bash
+ansible-playbook -i ansible/inventory/hosts.yml ansible/site.yml --tags istio
+```
+
+This installs:
+- **Istio Base** — CRDs and cluster-wide resources
+- **Istiod** — Control plane (Pilot, Citadel, Galley)
+- **Kiali** — Service mesh observability dashboard (accessible at the node IP on port 20001)
+
+### Enabling Istio for Moodle
+
+Enable Istio in your Helm values:
+
+```yaml
+# values-prod.yaml
+istio:
+  enabled: true
+
+kiali:
+  enabled: true
+  externalUrl: "http://<master-node-ip>:20001"
+```
+
+The namespace will automatically be labeled for sidecar injection (`istio-injection=enabled`).
+
+### What Kiali Provides
+
+- **Traffic Topology** — Visual map of all services, workloads, and dependencies
+- **Request Tracing** — Distributed tracing to identify latency bottlenecks (e.g., "why is the gradebook slow?")
+- **Health Dashboard** — Real-time status of all services in the mesh
+- **Traffic Management** — Visualize and configure routing rules, timeouts, and retries
+- **Security** — View mTLS status and authorization policies
+
+### Accessing Kiali
+
+After installation, access Kiali at:
+
+```
+http://<master-node-ip>:20001/kiali
+```
+
+For production, configure an Ingress or port-forward:
+
+```bash
+kubectl port-forward -n kiali svc/kiali-server 20001:20001
+```
+
+### Istio Compatibility Notes
+
+- Sidecar injection adds ~100MB memory overhead per pod
+- Existing NetworkPolicies remain compatible with Istio
+- HPA metrics still function normally with Istio sidecars
+- VirtualService and DestinationRule templates are included in the Helm chart when `istio.enabled: true`
+
 ## Terraform Remote Backend
 
 For production, configure a remote backend in `tofu/backend.tf`:

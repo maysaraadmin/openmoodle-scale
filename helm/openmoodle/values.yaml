@@ -133,5 +133,22 @@ backup:
     enabled: true
     days: 30
 
+istio:
+  enabled: false
+  sidecar:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 2000m
+        memory: 1Gi
+
+kiali:
+  enabled: false
+  auth:
+    strategy: anonymous
+  externalUrl: "http://localhost:20001"
+
 podManagement:
   terminationGracePeriodSeconds: 60

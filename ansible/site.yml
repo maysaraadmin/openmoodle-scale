@@ -5,6 +5,13 @@
   roles:
     - role: hardening
 
+- name: Install Istio service mesh (optional)
+  hosts: k8s_master
+  become: true
+  tags: istio
+  roles:
+    - role: istio
+
 - name: Bootstrap Kubernetes control plane
   hosts: k8s_master
   become: true
