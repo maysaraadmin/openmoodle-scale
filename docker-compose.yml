@@ -1,0 +1,130 @@
+version: '3.8'
+
+services:
+  postgresql:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: moodle
+      POSTGRES_PASSWORD: moodlepassword
+      POSTGRES_DB: moodle
+    volumes:
+      - postgresql_data:/var/lib/postgresql/data
+    networks:
+      - moodle
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U moodle"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--requirepass", "redispassword"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - moodle
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    networks:
+      - moodle
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    restart: unless-stopped
+
+  moodle-init:
+    image: moodle-php-apache:8.3-pgsql
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    environment:
+      DB_TYPE: pgsql
+      DB_HOST: postgresql
+      DB_NAME: moodle
+      DB_USER: moodle
+      DB_PASSWORD: moodlepassword
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: redispassword
+      MOODLE_SSL_PROXY: "false"
+      MOODLE_REVERSE_PROXY: "false"
+    volumes:
+      - moodledata:/var/moodledata
+      - ./docker/config.php:/var/www/html/config.php:ro
+    networks:
+      - moodle
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        mkdir -p /var/moodledata
+        chown -R www-data:www-data /var/moodledata
+        if [ ! -f /var/www/html/config.php ]; then
+          cp /var/www/html/config-dist.php /var/www/html/config.php;
+        fi;
+        php /var/www/html/admin/cli/install_database.php \
+          --fullname="OpenMoodleScale" \
+          --shortname="OpenMoodleScale" \
+          --adminuser=admin \
+          --adminpass=Admin123! \
+          --agree-license || true
+        php /var/www/html/admin/cli/upgrade.php --non-interactive || true
+    restart: "no"
+
+  moodle-app:
+    image: moodle-php-apache:8.3-pgsql
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      moodle-init:
+        condition: service_completed_successfully
+    environment:
+      DB_TYPE: pgsql
+      DB_HOST: postgresql
+      DB_NAME: moodle
+      DB_USER: moodle
+      DB_PASSWORD: moodlepassword
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: redispassword
+      MOODLE_SSL_PROXY: "false"
+      MOODLE_REVERSE_PROXY: "false"
+      WWW_ROOT: http://localhost:8080
+    volumes:
+      - moodledata:/var/moodledata
+      - ./docker/config.php:/var/www/html/config.php:ro
+    networks:
+      - moodle
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+volumes:
+  postgresql_data:
+  redis_data:
+  minio_data:
+  moodledata:
+
+networks:
+  moodle:

@@ -1,0 +1,25 @@
+<?php
+unset($CFG);
+global $CFG;
+$CFG = new stdClass();
+$CFG->dbtype = 'pgsql';
+$CFG->dblibrary = 'native';
+$CFG->dbhost = getenv('DB_HOST') ?: 'postgresql';
+$CFG->dbport = getenv('DB_PORT') ?: 5432;
+$CFG->dbname = getenv('DB_NAME') ?: 'moodle';
+$CFG->dbuser = getenv('DB_USER') ?: 'moodle';
+$CFG->dbpass = getenv('DB_PASSWORD');
+$CFG->prefix = 'mdl_';
+$CFG->wwwroot = getenv('WWW_ROOT') ?: 'http://localhost:8080';
+$CFG->dataroot = '/var/moodledata';
+$CFG->session_handler_class = '\\core\\session\\redis';
+$CFG->session_redis_host = getenv('REDIS_HOST') ?: 'redis';
+$CFG->session_redis_port = getenv('REDIS_PORT') ?: 6379;
+$CFG->session_redis_auth = getenv('REDIS_PASSWORD');
+$CFG->sslproxy = getenv('MOODLE_SSL_PROXY') === 'true' ? true : false;
+$CFG->reverseproxy = getenv('MOODLE_REVERSE_PROXY') === 'true' ? true : false;
+$CFG->debug = 0;
+$CFG->debugdisplay = 0;
+$CFG->admins = 'admin';
+$CFG->directorypermissions = 0755;
+require_once(__DIR__ . '/lib/setup.php');
