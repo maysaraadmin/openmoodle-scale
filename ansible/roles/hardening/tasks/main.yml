@@ -6,9 +6,14 @@
     ssh_port: 22
     allowed_ssh_users: [ubuntu]
     ufw_rules:
-      - { port: '22', proto: tcp, rule: allow, comment: 'SSH' }
+      - { port: '{{ ssh_port }}', proto: tcp, rule: allow, comment: 'SSH' }
       - { port: '6443', proto: tcp, rule: allow, comment: 'Kubernetes API' }
-      - { port: '10250', proto: tcp, rule: allow, comment: 'Kubelet' }
+      - { port: '10250', proto: tcp, rule: allow, comment: 'Kubelet API' }
+      - { port: '2379:2380', proto: tcp, rule: allow, comment: 'etcd' }
+      - { port: '8472', proto: udp, rule: allow, comment: 'Flannel VXLAN' }
+      - { port: '4789', proto: udp, rule: allow, comment: 'Calico VXLAN' }
+      - { port: '179', proto: tcp, rule: allow, comment: 'Calico BGP' }
+      - { port: '30000:32767', proto: tcp, rule: allow, comment: 'NodePort range' }
   tasks:
     - name: Disable password authentication
       ansible.builtin.lineinfile:
@@ -24,10 +29,10 @@
         line: 'PermitRootLogin no'
         validate: sshd -t -f %s
 
-    - name: Restart sshd
+    - name: Reload sshd
       ansible.builtin.service:
         name: sshd
-        state: restarted
+        state: reloaded
 
     - name: Install unattended-upgrades
       ansible.builtin.apt:
@@ -54,26 +59,13 @@
         direction: incoming
         policy: deny
 
-    - name: Allow SSH through UFW
+    - name: Allow required ports through UFW
       ansible.builtin.ufw:
-        rule: allow
-        port: '{{ ssh_port }}'
-        proto: tcp
-        comment: SSH
-
-    - name: Allow Kubernetes API through UFW
-      ansible.builtin.ufw:
-        rule: allow
-        port: '6443'
-        proto: tcp
-        comment: 'Kubernetes API'
-
-    - name: Allow kubelet through UFW
-      ansible.builtin.ufw:
-        rule: allow
-        port: '10250'
-        proto: tcp
-        comment: Kubelet
+        rule: "{{ item.rule }}"
+        port: "{{ item.port }}"
+        proto: "{{ item.proto }}"
+        comment: "{{ item.comment }}"
+      loop: "{{ ufw_rules }}"
 
     - name: Enable UFW
       ansible.builtin.ufw:

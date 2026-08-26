@@ -84,7 +84,6 @@
       ansible.builtin.command: >
         kubectl label namespace {{ item }} istio-injection=enabled --overwrite
       loop:
-        - default
         - moodle-prod
         - moodle-staging
       run_once: true
