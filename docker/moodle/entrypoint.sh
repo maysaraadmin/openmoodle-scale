@@ -8,7 +8,7 @@ if [ "${WAIT_FOR_DATABASE:-true}" = "true" ]; then
     echo "DB_HOST or DB_NAME not set; skipping database wait."
   else
     echo "Waiting for database at ${DB_HOST}..."
-    until php -r 'new PDO("mysql:host=" . getenv("DB_HOST") . ";dbname=" . getenv("DB_NAME"), getenv("DB_USER"), getenv("DB_PASS"));' 2>/dev/null; do
+    until php -r '$driver = getenv("DB_TYPE") ?: "pgsql"; $dsn = $driver . ":host=" . getenv("DB_HOST") . ";dbname=" . getenv("DB_NAME"); new PDO($dsn, getenv("DB_USER"), getenv("DB_PASS"));' 2>/dev/null; do
       echo "Database not ready, retrying in 2s..."
       sleep 2
     done

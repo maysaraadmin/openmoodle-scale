@@ -1,3 +1,5 @@
+# Pin base image with SHA256 digest for reproducible builds:
+# FROM nginx:1.25-alpine@sha256:...
 FROM nginx:1.25-alpine
 RUN rm /etc/nginx/conf.d/default.conf && \
     apk add --no-cache curl

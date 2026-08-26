@@ -1,3 +1,5 @@
+# Pin base image with SHA256 digest for reproducible builds:
+# FROM php:8.2-fpm-bookworm@sha256:...
 FROM php:8.2-fpm-bookworm AS builder
 ARG MOODLE_BRANCH=MOODLE_404_STABLE
 ENV MOODLE_BRANCH=${MOODLE_BRANCH}
