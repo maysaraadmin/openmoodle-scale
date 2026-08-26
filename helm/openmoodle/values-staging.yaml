@@ -12,13 +12,11 @@ hpa:
   minReplicas: 2
   maxReplicas: 5
 
-database: { host: "", name: moodle_staging, user: moodle, port: 3306 }
+database: { host: "", name: moodle_staging, user: moodle, port: 5432, type: pgsql }
 
 secrets:
   existingSecret: ""
   create: false
-  databasePassword: ""
-  adminPassword: ""
   minioAccessKey: ""
   minioSecretKey: ""
   redisPassword: ""
@@ -34,18 +32,23 @@ redis:
     enabled: true
     password: ""
 
-mariadb:
+postgresql:
   enabled: true
-  architecture: replication
-  pdb:
-    enabled: true
-    minAvailable: 1
+  architecture: standalone
+  auth:
+    username: moodle
+    database: moodle_staging
+    password: ""
   primary:
     persistence: { enabled: true, size: 10Gi }
     antiAffinity: true
-  secondary:
-    replicaCount: 1
-    persistence: { enabled: true, size: 10Gi }
+  pdb:
+    enabled: true
+    minAvailable: 1
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
 
 minio:
   enabled: true
@@ -54,7 +57,7 @@ minio:
 
 moodledata:
   size: 50Gi
-  accessMode: ReadWriteOnce
+  accessMode: ReadWriteMany
 
 cache:
   enabled: true
@@ -73,6 +76,7 @@ fileStorage:
     secretKey: ""
     region: us-east-1
     useSSL: true
+    publicBucket: false
 
 ingress:
   enabled: false
@@ -85,7 +89,7 @@ ingress:
 
 cron: { enabled: true, schedule: "*/5 * * * *" }
 
-varnish: { enabled: false, replicaCount: 2, cacheSize: 2G }
+varnish: { enabled: false, replicaCount: 2, cacheSize: 2G, memoryLimit: "3Gi" }
 
 livenessProbe:
   path: /health
@@ -119,6 +123,10 @@ networkPolicy:
 backup:
   enabled: true
   schedule: "0 2 * * *"
+  image: "bitnami/kubectl:1.30"
+  persistent: true
+  storageClass: longhorn
+  size: 20Gi
   minio:
     enabled: true
     endpoint: minio.minio.svc.cluster.local:9000
@@ -128,6 +136,7 @@ backup:
     days: 14
   encryption:
     enabled: false
+  maintenance: false
 
 podManagement:
   terminationGracePeriodSeconds: 60

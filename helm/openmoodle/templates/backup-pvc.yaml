@@ -1,0 +1,14 @@
+{{- if and .Values.backup.enabled .Values.backup.persistent }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "openmoodle.fullname" . }}-backup
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: {{ .Values.backup.storageClass | default .Values.global.storageClass | quote }}
+  resources:
+    requests:
+      storage: {{ .Values.backup.size | default "20Gi" }}
+{{- end }}

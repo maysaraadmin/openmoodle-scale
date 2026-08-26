@@ -21,75 +21,50 @@ spec:
             runAsNonRoot: true
             runAsUser: 1000
             fsGroup: 1000
-      containers:
-        - name: backup
-          image: "bitnami/kubectl:latest"
-          imagePullPolicy: IfNotPresent
-          securityContext:
-            runAsNonRoot: true
-            runAsUser: 1001
-            allowPrivilegeEscalation: false
-            capabilities: { drop: [ALL] }
-            readOnlyRootFilesystem: true
-          command:
-            - /bin/sh
-            - -c
-            - |
-              set -e
-              BACKUP_DIR="/backup/openmoodle-$(date +%Y%m%d-%H%M%S)"
-              NAMESPACE="{{ .Release.Namespace }}"
-              DB_POD=$(kubectl get pod -n "$NAMESPACE" -l app.kubernetes.io/name=mariadb -o jsonpath='{.items[0].metadata.name}')
-              APP_POD=$(kubectl get pod -n "$NAMESPACE" -l app.kubernetes.io/name={{ include "openmoodle.name" . }} -o jsonpath='{.items[0].metadata.name}')
-              SECRET_NAME="{{ include "openmoodle.secretName" . }}"
-              DB_PASSWORD=$(kubectl get secret -n "$NAMESPACE" "$SECRET_NAME" -o jsonpath='{.data.database-password}' | base64 -d)
-
-              mkdir -p "$BACKUP_DIR"
-              kubectl get all -n "$NAMESPACE" -o yaml > "$BACKUP_DIR/k8s-resources.yaml"
-              kubectl get configmap -n "$NAMESPACE" -o yaml > "$BACKUP_DIR/configmaps.yaml"
-
-              kubectl exec -n "$NAMESPACE" "$DB_POD" -- \
-                sh -c 'mariadb-dump --single-transaction --routines --events \
-                  -u "${DB_USER:-moodle}" -p"${DB_PASSWORD}" "${DB_NAME:-moodle}"' \
-                > "$BACKUP_DIR/database.sql"
-
-              kubectl exec -n "$NAMESPACE" "$APP_POD" -- \
-                tar czf - -C /var moodledata \
-                > "$BACKUP_DIR/moodledata.tar.gz"
-
-              tar czf "${BACKUP_DIR}.tar.gz" -C "$(dirname "$BACKUP_DIR")" "$(basename "$BACKUP_DIR")"
-              rm -rf "$BACKUP_DIR"
-
-              echo "Backup created at ${BACKUP_DIR}.tar.gz"
-
-              {{- if .Values.backup.encryption.enabled }}
-              if command -v gpg >/dev/null 2>&1; then
-                gpg --batch --yes --symmetric --cipher-algo AES256 --passphrase "$(BACKUP_ENCRYPTION_KEY)" "${BACKUP_DIR}.tar.gz"
-                rm -f "${BACKUP_DIR}.tar.gz"
-                echo "Backup encrypted with AES-256"
-              else
-                echo "WARNING: gpg not available in backup container; backup is NOT encrypted. Install gpg or use manual backup scripts for encrypted backups."
-              fi
-              {{- end }}
-
-              {{- if .Values.backup.retention.enabled }}
-              find /backup -name "openmoodle-*.tar.gz" -mtime +{{ .Values.backup.retention.days | default 30 }} -delete
-              echo "Retention cleanup applied"
-              {{- end }}
-          env:
-            - name: DB_USER
-              value: {{ .Values.database.user | quote }}
-            - name: DB_NAME
-              value: {{ .Values.database.name | quote }}
-            {{- if .Values.backup.encryption.enabled }}
-            - name: BACKUP_ENCRYPTION_KEY
-              valueFrom: { secretKeyRef: { name: {{ include "openmoodle.secretName" . }}, key: backup-encryption-key } }
-            {{- end }}
-          volumeMounts:
-            - { name: tmp, mountPath: /tmp }
-          volumes:
-            - name: tmp
-              emptyDir: {}
-          resources:
-            requests: { cpu: 200m, memory: 256Mi }
-            limits: { cpu: 1000m, memory: 1Gi }
+          containers:
+            - name: backup
+              image: {{ .Values.backup.image | default "bitnami/kubectl:1.30" }}
+              imagePullPolicy: IfNotPresent
+              securityContext:
+                runAsNonRoot: true
+                runAsUser: 1001
+                allowPrivilegeEscalation: false
+                capabilities: { drop: [ALL] }
+                readOnlyRootFilesystem: true
+              command: ["/bin/sh", "-c", "cp /scripts/backup.sh /tmp/backup.sh && sh /tmp/backup.sh"]
+              env:
+                - name: DB_USER
+                  value: {{ .Values.database.user | quote }}
+                - name: DB_NAME
+                  value: {{ .Values.database.name | quote }}
+                - name: MAINTENANCE_MODE
+                  value: {{ .Values.backup.maintenance | quote }}
+                {{- if .Values.backup.encryption.enabled }}
+                - name: BACKUP_ENCRYPTION_KEY
+                  valueFrom: { secretKeyRef: { name: {{ include "openmoodle.secretName" . }}, key: backup-encryption-key } }
+                {{- end }}
+                {{- if .Values.backup.minio.enabled }}
+                - name: MINIO_ENDPOINT
+                  value: {{ .Values.backup.minio.endpoint | default "minio.minio.svc.cluster.local:9000" | quote }}
+                - name: MINIO_BUCKET
+                  value: {{ .Values.backup.minio.bucket | default "backups" | quote }}
+                - name: MINIO_ACCESS_KEY
+                  valueFrom: { secretKeyRef: { name: {{ .Release.Name }}-minio, key: root-user, optional: true } }
+                - name: MINIO_SECRET_KEY
+                  valueFrom: { secretKeyRef: { name: {{ .Release.Name }}-minio, key: root-password, optional: true } }
+                {{- end }}
+              volumeMounts:
+                - { name: tmp, mountPath: /tmp }
+                - { name: backup, mountPath: /backup }
+                - { name: scripts, mountPath: /scripts, readOnly: true }
+              volumes:
+                - name: tmp
+                  emptyDir: {}
+                - name: backup
+                  persistentVolumeClaim: { claimName: {{ include "openmoodle.fullname" . }}-backup }
+                - name: scripts
+                  configMap: { name: {{ include "openmoodle.fullname" . }}-backup-script, defaultMode: 0755 }
+              resources:
+                requests: { cpu: 200m, memory: 256Mi }
+                limits: { cpu: 1000m, memory: 1Gi }
 {{- end }}

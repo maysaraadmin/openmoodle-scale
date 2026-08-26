@@ -14,7 +14,10 @@ spec:
       template:
         spec:
           restartPolicy: OnFailure
-          securityContext: { seccompProfile: { type: RuntimeDefault } }
+          securityContext:
+            seccompProfile: { type: RuntimeDefault }
+            runAsNonRoot: true
+            fsGroup: 33
           containers:
             - name: moodle-cron
               image: "{{ .Values.global.imageRegistry }}/{{ .Values.moodle.image.repository }}:{{ .Values.moodle.image.tag }}"
@@ -31,7 +34,7 @@ spec:
             - { name: DB_HOST, value: {{ include("openmoodle.databaseHost", .) | quote }} }
             - { name: DB_NAME, value: {{ .Values.database.name | quote }} }
             - { name: DB_USER, value: {{ .Values.database.user | quote }} }
-            - { name: DB_PASSWORD, valueFrom: { secretKeyRef: { name: {{ include("openmoodle.secretName", .) }}, key: database-password } } }
+            - { name: DB_PASSWORD, valueFrom: { secretKeyRef: { name: {{ include "openmoodle.postgresSecretName" . }}, key: {{ include "openmoodle.postgresSecretKey" . } } } }
             {{- if .Values.fileStorage.enabled }}
             - name: S3_ACCESS_KEY
               valueFrom: { secretKeyRef: { name: {{ include("openmoodle.secretName", .) }}, key: s3-access-key } }

@@ -8,15 +8,23 @@ data:
     unset($CFG);
     global $CFG;
     $CFG = new stdClass();
-    $CFG->dbtype = 'mariadb';
+    $CFG->dbtype = 'pgsql';
     $CFG->dblibrary = 'native';
     $CFG->dbhost = '{{ include "openmoodle.databaseHost" . }}';
-    $CFG->dbport = {{ .Values.database.port | default 3306 }};
+    $CFG->dbport = {{ .Values.database.port | default 5432 }};
     $CFG->dbname = '{{ .Values.database.name }}';
     $CFG->dbuser = '{{ .Values.database.user }}';
     $CFG->dbpass = getenv('DB_PASSWORD');
     $CFG->prefix = 'mdl_';
-    $CFG->wwwroot = 'https://{{ (index .Values.ingress.hosts 0).host }}';
+    {{- $host := "localhost" }}
+    {{- if .Values.ingress.hosts }}
+    {{- $host = (index .Values.ingress.hosts 0).host }}
+    {{- end }}
+    {{- $scheme := "http" }}
+    {{- if .Values.ingress.tls }}
+    {{- $scheme = "https" }}
+    {{- end }}
+    $CFG->wwwroot = '{{ $scheme }}://{{ $host }}';
     $CFG->dataroot = '/var/moodledata';
     $CFG->session_handler_class = '\\core\\session\\redis';
     $CFG->session_redis_host = '{{ include "openmoodle.redisHost" . }}';
@@ -47,8 +55,8 @@ data:
     $CFG->s3_use_ssl = {{ .Values.fileStorage.s3.useSSL }};
     $CFG->s3_key = getenv('S3_ACCESS_KEY');
     $CFG->s3_secret = getenv('S3_SECRET_KEY');
-    $CFG->s3_public_bucket = true;
-    $CFG->s3_get_object_integrity = false;
+    $CFG->s3_public_bucket = {{ .Values.fileStorage.s3.publicBucket | default false }};
+    $CFG->s3_get_object_integrity = true;
     $CFG->file_system_cache_expire = 3600;
     {{- end }}
     $CFG->admins = 'admin';

@@ -18,13 +18,11 @@ hpa:
   targetCPUUtilizationPercentage: 70
   targetMemoryUtilizationPercentage: 80
 
-database: { host: "", name: moodle, user: moodle, port: 3306 }
+database: { host: "", name: moodle, user: moodle, port: 5432, type: pgsql }
 
 secrets:
   existingSecret: ""
   create: false
-  databasePassword: ""
-  adminPassword: ""
   minioAccessKey: ""
   minioSecretKey: ""
   redisPassword: ""
@@ -37,6 +35,10 @@ redis:
   pdb:
     enabled: true
     minAvailable: 1
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
   auth:
     enabled: true
     password: ""
@@ -44,14 +46,25 @@ redis:
     maxmemory 2gb
     maxmemory-policy allkeys-lru
 
-mariadb:
+postgresql:
   enabled: true
-  architecture: replication
+  architecture: standalone
+  auth:
+    username: moodle
+    database: moodle
+    password: ""
+  primary:
+    persistence: { enabled: true, size: 20Gi }
+    resources:
+      requests: { cpu: 2000m, memory: 4Gi }
+      limits: { cpu: 4000m, memory: 8Gi }
   pdb:
     enabled: true
     minAvailable: 1
-  primary: { persistence: { enabled: true, size: 20Gi } }
-  secondary: { replicaCount: 1, persistence: { enabled: true, size: 20Gi } }
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
 
 minio:
   enabled: true
@@ -60,7 +73,7 @@ minio:
 
 moodledata:
   size: 100Gi
-  accessMode: ReadWriteOnce
+  accessMode: ReadWriteMany
 
 cache:
   enabled: true
@@ -79,6 +92,7 @@ fileStorage:
     secretKey: ""
     region: us-east-1
     useSSL: true
+    publicBucket: false
 
 ingress:
   enabled: true
@@ -95,7 +109,7 @@ ingress:
 
 cron: { enabled: true, schedule: "*/5 * * * *" }
 
-varnish: { enabled: false, replicaCount: 2, cacheSize: 2G }
+varnish: { enabled: false, replicaCount: 2, cacheSize: 2G, memoryLimit: "3Gi" }
 
 livenessProbe:
   path: /health
@@ -132,6 +146,10 @@ networkPolicy:
 backup:
   enabled: false
   schedule: "0 2 * * *"
+  image: "bitnami/kubectl:1.30"
+  persistent: true
+  storageClass: ""
+  size: 20Gi
   minio:
     enabled: false
     endpoint: minio.minio.svc.cluster.local:9000
@@ -142,6 +160,7 @@ backup:
   encryption:
     enabled: false
     gpgKeyId: ""
+  maintenance: false
 
 istio:
   enabled: false

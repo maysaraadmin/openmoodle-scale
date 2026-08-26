@@ -14,11 +14,11 @@
     failureThreshold: 30
     periodSeconds: 2
   readinessProbe:
-    tcpSocket: { port: fastcgi }
+    exec: { command: ["php", "-r", "exit(0);"] }
     initialDelaySeconds: 10
     periodSeconds: 10
   livenessProbe:
-    tcpSocket: { port: fastcgi }
+    exec: { command: ["php", "-r", "exit(0);"] }
     initialDelaySeconds: 30
     periodSeconds: 20
   lifecycle:
@@ -28,13 +28,12 @@
         command: ["/bin/sh", "-c", "echo 'Graceful shutdown: sending QUIT to PHP-FPM'; kill -QUIT 1 2>/dev/null || true; sleep {{ .Values.preStopHook.timeoutSeconds | default 30 }}"]
     {{- end }}
   env:
+    - { name: DB_TYPE, value: {{ .Values.database.type | default "pgsql" | quote } } }
     - { name: DB_HOST, value: {{ include "openmoodle.databaseHost" . | quote }} }
     - { name: DB_NAME, value: {{ .Values.database.name | quote }} }
     - { name: DB_USER, value: {{ .Values.database.user | quote }} }
     - name: DB_PASSWORD
-      valueFrom: { secretKeyRef: { name: {{ include "openmoodle.secretName" . }}, key: database-password } }
-    - name: DB_PASS
-      valueFrom: { secretKeyRef: { name: {{ include "openmoodle.secretName" . }}, key: database-password } }
+      valueFrom: { secretKeyRef: { name: {{ include "openmoodle.postgresSecretName" . }}, key: {{ include "openmoodle.postgresSecretKey" . } } }
     - name: REDIS_PASSWORD
       valueFrom: { secretKeyRef: { name: {{ include "openmoodle.secretName" . }}, key: redis-password } }
     {{- if .Values.fileStorage.enabled }}

@@ -1,0 +1,110 @@
+{{- if .Values.backup.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "openmoodle.fullname" . }}-backup-script
+  labels: {{- include "openmoodle.labels" . | nindent 4 }}
+data:
+  backup.sh: |
+    #!/bin/sh
+    set -euo pipefail
+
+    NAMESPACE="${NAMESPACE:-{{ .Release.Namespace }}}"
+    SECRET_NAME="{{ include "openmoodle.postgresSecretName" . }}"
+    SECRET_KEY="{{ include "openmoodle.postgresSecretKey" . }}"
+    DB_USER="${DB_USER:-moodle}"
+    DB_NAME="${DB_NAME:-moodle}"
+    MAINTENANCE_MODE="${MAINTENANCE_MODE:-false}"
+    BACKUP_DIR="${BACKUP_DIR:-/backup/openmoodle-$(date +%Y%m%d-%H%M%S)}"
+    MINIO_UPLOAD="{{ .Values.backup.minio.enabled }}"
+    ENCRYPT_BACKUP="{{ .Values.backup.encryption.enabled }}"
+
+    ensure_tools() {
+      mkdir -p /tmp/bin /tmp/gnupg
+      export PATH="/tmp/bin:$PATH"
+      if [ "$MINIO_UPLOAD" = "true" ] && ! command -v mc >/dev/null 2>&1; then
+        curl -fsSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /tmp/bin/mc && chmod +x /tmp/bin/mc || true
+      fi
+      if [ "$ENCRYPT_BACKUP" = "true" ] && ! command -v gpg >/dev/null 2>&1; then
+        ( apt-get download gnupg >/dev/null 2>&1 || true
+          for d in gnupg*.deb; do [ -f "$d" ] && dpkg-deb -x "$d" /tmp/gnupg && rm -f "$d"; done
+          true )
+        export PATH="/tmp/gnupg/usr/bin:$PATH"
+        export LD_LIBRARY_PATH="/tmp/gnupg/usr/lib:/tmp/gnupg/usr/lib/x86_64-linux-gnu${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+      fi
+    }
+    ensure_tools
+
+    DB_POD=$(kubectl get pod -n "$NAMESPACE" -l app.kubernetes.io/name=postgresql -o jsonpath='{.items[0].metadata.name}')
+    APP_POD=$(kubectl get pod -n "$NAMESPACE" -l app.kubernetes.io/name={{ include "openmoodle.name" . }} -o jsonpath='{.items[0].metadata.name}')
+    DB_PASSWORD=$(kubectl get secret -n "$NAMESPACE" "$SECRET_NAME" -o jsonpath="{%.data.${SECRET_KEY}%" | base64 -d)
+
+    enable_maintenance() {
+      if [ "$MAINTENANCE_MODE" = "true" ]; then
+        echo "Enabling Moodle maintenance mode..."
+        kubectl exec -n "$NAMESPACE" "$APP_POD" -- --request-timeout=300s \
+          php /var/www/html/admin/cli/maintenance.php --enable >/dev/null 2>&1 || true
+      fi
+    }
+
+    disable_maintenance() {
+      if [ "$MAINTENANCE_MODE" = "true" ]; then
+        echo "Disabling Moodle maintenance mode..."
+        kubectl exec -n "$NAMESPACE" "$APP_POD" -- --request-timeout=300s \
+          php /var/www/html/admin/cli/maintenance.php --disable >/dev/null 2>&1 || true
+      fi
+    }
+
+    trap disable_maintenance EXIT
+
+    mkdir -p "$BACKUP_DIR"
+
+    enable_maintenance
+
+    kubectl get pods,services,deployments,statefulsets,configmaps,secrets -n "$NAMESPACE" -o yaml > "$BACKUP_DIR/k8s-resources.yaml" --request-timeout=300s
+    kubectl get configmap -n "$NAMESPACE" -o yaml > "$BACKUP_DIR/configmaps.yaml" --request-timeout=300s
+
+    kubectl exec -n "$NAMESPACE" "$DB_POD" -- --request-timeout=300s \
+      sh -c "PGPASSWORD='$DB_PASSWORD' pg_dump -U '$DB_USER' -d '$DB_NAME' -Fc -b" \
+      > "$BACKUP_DIR/database.dump"
+
+    kubectl exec -n "$NAMESPACE" "$APP_POD" -- --request-timeout=300s \
+      tar czf - -C /var moodledata \
+      > "$BACKUP_DIR/moodledata.tar.gz"
+
+    disable_maintenance
+
+    tar czf "${BACKUP_DIR}.tar.gz" -C "$(dirname "$BACKUP_DIR")" "$(basename "$BACKUP_DIR")"
+    rm -rf "$BACKUP_DIR"
+
+    ARCHIVE="${BACKUP_DIR}.tar.gz"
+
+    {{- if .Values.backup.encryption.enabled }}
+    if command -v gpg >/dev/null 2>&1; then
+      gpg --batch --yes --symmetric --cipher-algo AES256 --passphrase "$BACKUP_ENCRYPTION_KEY" "$ARCHIVE"
+      rm -f "$ARCHIVE"
+      ARCHIVE="${ARCHIVE}.gpg"
+      echo "Backup encrypted with AES-256"
+    else
+      echo "WARNING: gpg not available in backup container; backup is NOT encrypted. Use an image that includes gpg."
+    fi
+    {{- end }}
+
+    {{- if .Values.backup.minio.enabled }}
+    if command -v mc >/dev/null 2>&1; then
+      mc alias set myminio "$MINIO_ENDPOINT" "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY" --api s3v4
+      mc cp "$ARCHIVE" "myminio/$MINIO_BUCKET/"
+      echo "Backup uploaded to MinIO bucket $MINIO_BUCKET"
+    else
+      echo "ERROR: mc (MinIO client) not found in backup container; cannot upload to MinIO. Use an image that includes mc."
+      exit 1
+    fi
+    {{- end }}
+
+    echo "Backup created at $ARCHIVE"
+
+    {{- if .Values.backup.retention.enabled }}
+    find /backup -name "openmoodle-*.tar.gz*" -mtime +{{ .Values.backup.retention.days | default 30 }} -delete
+    echo "Retention cleanup applied"
+    {{- end }}
+{{- end }}

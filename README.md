@@ -1,6 +1,6 @@
 # OpenMoodleScale
 
-Open-source deployment blueprint for running Moodle at scale with Kubernetes, OpenTofu, Ansible, Redis, MariaDB, MinIO, and observability tooling.
+Open-source deployment blueprint for running Moodle at scale with Kubernetes, OpenTofu, Ansible, Redis, PostgreSQL, MinIO, and observability tooling.
 
 ## Architecture
 
@@ -31,7 +31,7 @@ Open-source deployment blueprint for running Moodle at scale with Kubernetes, Op
      +----------+----------+                |
      |          |          |                |
  +---+---+ +----+----+ +--+-----+          |
- | MariaDB| | Redis   | | MinIO  |          |
+ | PostgreSQL| | Redis   | | MinIO  |          |
  |Primary | |Cluster  | |(S3)    |          |
  |+Replica| |(Sentinel| |        |          |
  +---+---+ |recommended| +--------+          |
@@ -124,7 +124,7 @@ Before deploying to production, configure:
 1. **Registry** — Set `global.imageRegistry` to your private registry.
 2. **TLS** — Set `ingress.tls` with valid hosts and secretName, or use cert-manager.
 3. **Secrets** — Either set `secrets.existingSecret` to a pre-created secret, or set `secrets.create=true` and provide non-empty passwords.
-4. **Database** — Set `database.host` to the MariaDB service name if using an external DB.
+4. **Database** — Set `database.host` to the PostgreSQL service name if using an external DB.
 5. **Redis auth** — Set `redis.auth.password` and `secrets.redisPassword`.
 6. **MinIO / S3** — If using object storage, set `fileStorage.enabled=true` and S3 credentials.
 
@@ -152,10 +152,10 @@ Before deploying to production, configure:
 ### Backup
 
 ```bash
-export DB_POD=$(kubectl get pod -n moodle-prod -l app.kubernetes.io/name=mariadb -o jsonpath='{.items[0].metadata.name}')
+export DB_POD=$(kubectl get pod -n moodle-prod -l app.kubernetes.io/name=postgresql -o jsonpath='{.items[0].metadata.name}')
 export APP_POD=$(kubectl get pod -n moodle-prod -l app.kubernetes.io/name=openmoodle -o jsonpath='{.items[0].metadata.name}')
-export SECRET_NAME=openmoodle-prod-openmoodle-secrets
-export DB_PASSWORD="$(kubectl get secret -n moodle-prod $SECRET_NAME -o jsonpath='{.data.database-password}' | base64 -d)"
+export SECRET_NAME=openmoodle-postgresql
+export DB_PASSWORD="$(kubectl get secret -n moodle-prod $SECRET_NAME -o jsonpath='{.data.password}' | base64 -d)"
 export MINIO_ACCESS_KEY="$(kubectl get secret -n moodle-prod $SECRET_NAME -o jsonpath='{.data.s3-access-key}' | base64 -d)"
 export MINIO_SECRET_KEY="$(kubectl get secret -n moodle-prod $SECRET_NAME -o jsonpath='{.data.s3-secret-key}' | base64 -d)"
 ./scripts/backup.sh
@@ -184,7 +184,7 @@ Access Grafana at the ingress host. The `OpenMoodleScale Overview` dashboard inc
 
 - HTTP request rate and p95 latency
 - Moodle app CPU and memory
-- MariaDB connections
+- PostgreSQL connections
 - Redis connected clients and memory
 - PVC usage
 - Nginx active connections
@@ -201,7 +201,7 @@ Access Grafana at the ingress host. The `OpenMoodleScale Overview` dashboard inc
 | MoodleHPAMaxedOut | warning | HPA at max replicas for 10m |
 | MoodlePodPending | warning | Pods stuck in Pending for 5m |
 | MoodlePVCUsageHigh | warning | PVC > 85% used for 5m |
-| MoodleDBCritical | critical | MariaDB connections > 150 |
+| MoodleDBCritical | critical | PostgreSQL connections > 150 |
 | MoodleRedisDown | critical | Redis unreachable for 2m |
 | MoodleCertExpirySoon | warning | TLS cert expires within 7 days |
 | MoodleNginxUpstreamErrors | critical | Upstream 5xx errors |
@@ -233,8 +233,8 @@ kubectl logs -n moodle-prod <pod-name> -c moodle-app
 ### Database connection failures
 
 ```bash
-kubectl exec -n moodle-prod <mariadb-pod> -- mariadb -u moodle -p -e "SHOW PROCESSLIST"
-kubectl get pods -n moodle-prod -l app.kubernetes.io/name=mariadb
+kubectl exec -n moodle-prod <postgresql-pod> -- psql -U moodle -c "SELECT * FROM pg_stat_activity;"
+kubectl get pods -n moodle-prod -l app.kubernetes.io/name=postgresql
 ```
 
 ### Redis session issues
@@ -262,7 +262,7 @@ kubectl describe pvc -n moodle-prod openmoodle-prod-openmoodle-moodledata
 - Image scanning runs in CI before deployment with Trivy
 - Images are signed with cosign in the CI/CD pipeline
 - Redis authentication is enabled via chart values
-- MariaDB passwords are no longer committed to source control
+- PostgreSQL passwords are no longer committed to source control
 - UFW firewall enabled on all nodes with only SSH, k8s API, and kubelet allowed
 - Unattended security upgrades enabled on all nodes
 - Terraform state should be stored in an encrypted remote backend (S3 + DynamoDB)
@@ -285,7 +285,7 @@ helm install external-secrets external-secrets/external-secrets -n external-secr
 
 Production enables a Kubernetes CronJob (`backup.enabled: true`) that runs daily at 2 AM and:
 
-- Dumps MariaDB with `--single-transaction`
+- Dumps PostgreSQL with `--single-transaction`
 - Archives `/var/moodledata`
 - Retains backups for 30 days (configurable)
 - Stores backups locally on the cluster PVC
@@ -389,15 +389,14 @@ tofu init -migrate-state
 
 ## Database Connection Pooling
 
-For high-traffic deployments, consider adding a connection pooler like ProxySQL or MaxScale between Moodle and MariaDB to reduce connection overhead during traffic spikes.
+For high-traffic deployments, consider adding a connection pooler like ProxySQL or MaxScale between Moodle and PostgreSQL to reduce connection overhead during traffic spikes.
 
 ## PodDisruptionBudgets
 
 PDBs are configured for all stateful components to ensure availability during cluster maintenance:
 
 - **Moodle app** — minAvailable: max(1, replicas - 1)
-- **MariaDB primary** — minAvailable: 1 (replicas cannot be drained below 1)
-- **MariaDB secondary** — minAvailable: 1
+- **PostgreSQL primary** — minAvailable: 1 (replicas cannot be drained below 1)
 - **Redis** — minAvailable: 1
 
 This prevents voluntary disruptions from taking down critical stateful pods.
@@ -406,7 +405,7 @@ This prevents voluntary disruptions from taking down critical stateful pods.
 
 Stateful components are configured with pod anti-affinity to spread across separate nodes:
 
-- MariaDB primary pods avoid scheduling on the same node
+- PostgreSQL primary pods avoid scheduling on the same node
 - Redis pods avoid scheduling on the same node
 - This improves availability during node failures
 
@@ -462,7 +461,7 @@ Access Grafana at the ingress host. The `OpenMoodleScale Overview` dashboard inc
 
 - HTTP request rate and p95 latency
 - Moodle app CPU and memory
-- MariaDB connections
+- PostgreSQL connections
 - Redis connected clients and memory
 - PVC usage
 - Nginx active connections
@@ -479,7 +478,7 @@ Access Grafana at the ingress host. The `OpenMoodleScale Overview` dashboard inc
 | MoodleHPAMaxedOut | warning | HPA at max replicas for 10m |
 | MoodlePodPending | warning | Pods stuck in Pending for 5m |
 | MoodlePVCUsageHigh | warning | PVC > 85% used for 5m |
-| MoodleDBCritical | critical | MariaDB connections > 150 |
+| MoodleDBCritical | critical | PostgreSQL connections > 150 |
 | MoodleRedisDown | critical | Redis unreachable for 2m |
 | MoodleCertExpirySoon | warning | TLS cert expires within 7 days |
 | MoodleNginxUpstreamErrors | critical | Upstream 5xx errors |
@@ -500,8 +499,8 @@ kubectl logs -n moodle-prod <pod-name> -c moodle-app
 ### Database connection failures
 
 ```bash
-kubectl exec -n moodle-prod <mariadb-pod> -- mariadb -u moodle -p -e "SHOW PROCESSLIST"
-kubectl get pods -n moodle-prod -l app.kubernetes.io/name=mariadb
+kubectl exec -n moodle-prod <postgresql-pod> -- psql -U moodle -c "SELECT * FROM pg_stat_activity;"
+kubectl get pods -n moodle-prod -l app.kubernetes.io/name=postgresql
 ```
 
 ### Redis session issues

@@ -1,19 +1,21 @@
 {{- define "openmoodle.initContainers" -}}
 - name: wait-for-db
-  image: "mysql:8.0"
+  image: "postgres:16"
   imagePullPolicy: IfNotPresent
   securityContext:
     runAsNonRoot: true
-    runAsUser: 999
+    runAsUser: 1000
     allowPrivilegeEscalation: false
     capabilities: { drop: [ALL] }
+    readOnlyRootFilesystem: true
   command:
     - /bin/sh
     - -c
     - |
       echo "Waiting for database at {{ include "openmoodle.databaseHost" . }}..."
+      export PGPASSWORD="${DB_PASSWORD}"
       for i in $(seq 1 60); do
-        if mysqladmin ping -h"{{ include "openmoodle.databaseHost" . }}" -u"{{ .Values.database.user }}" -p"${DB_PASSWORD}" --silent; then
+        if pg_isready -h "{{ include "openmoodle.databaseHost" . }}" -U "{{ .Values.database.user }}" -d "{{ .Values.database.name }}" >/dev/null 2>&1; then
           echo "Database is ready."
           exit 0
         fi
@@ -23,7 +25,7 @@
       echo "Database not ready after 120s, failing."
       exit 1
   env:
-    - { name: DB_PASSWORD, valueFrom: { secretKeyRef: { name: {{ include "openmoodle.secretName" . }}, key: database-password } } }
+    - { name: DB_PASSWORD, valueFrom: { secretKeyRef: { name: {{ include "openmoodle.postgresSecretName" . }}, key: {{ include "openmoodle.postgresSecretKey" . } } } }
   volumeMounts:
     - { name: config, mountPath: /var/www/html/config.php, subPath: config.php, readOnly: true }
     - { name: tmp, mountPath: /tmp }

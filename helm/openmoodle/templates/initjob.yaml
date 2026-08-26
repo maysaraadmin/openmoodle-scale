@@ -1,4 +1,4 @@
-{{- if and .Values.initJob.enabled .Values.mariadb.enabled }}
+{{- if and .Values.initJob.enabled .Values.postgresql.enabled }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -12,7 +12,10 @@ spec:
   template:
     spec:
       restartPolicy: Never
-      securityContext: { seccompProfile: { type: RuntimeDefault } }
+      securityContext:
+        seccompProfile: { type: RuntimeDefault }
+        runAsNonRoot: true
+        fsGroup: 1000
       initContainers:
 {{- include "openmoodle.initContainers" . | nindent 6 }}
       containers:
@@ -31,9 +34,7 @@ spec:
             - { name: DB_NAME, value: {{ .Values.database.name | quote }} }
             - { name: DB_USER, value: {{ .Values.database.user | quote }} }
             - name: DB_PASSWORD
-              valueFrom: { secretKeyRef: { name: {{ include "openmoodle.secretName" . }}, key: database-password } }
-            - name: DB_PASS
-              valueFrom: { secretKeyRef: { name: {{ include "openmoodle.secretName" . }}, key: database-password } }
+              valueFrom: { secretKeyRef: { name: {{ include "openmoodle.postgresSecretName" . }}, key: {{ include "openmoodle.postgresSecretKey" . } } }
             - name: REDIS_PASSWORD
               valueFrom: { secretKeyRef: { name: {{ include "openmoodle.secretName" . }}, key: redis-password } }
           volumeMounts:
