@@ -19,7 +19,7 @@ dependencies:
     repository: https://charts.bitnami.com/bitnami
     condition: redis.enabled
   - name: postgresql
-    version: 18.11.1
+    version: 18.12.4
     repository: https://charts.bitnami.com/bitnami
     condition: postgresql.enabled
   - name: minio
